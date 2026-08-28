@@ -121,10 +121,30 @@ def find_restaurants(
     return all_restaurants
 
 
+def _short_description(r: dict) -> str:
+    """Generate a concise one-line description for a restaurant via the LLM."""
+    name = r.get("name", "")
+    cuisine = r.get("cuisine", "")
+    rating = r.get("rating", "N/A")
+    reviews = r.get("user_ratings_total", 0) or 0
+    prompt = (
+        f"Write ONE short, concrete sentence describing the {cuisine} restaurant '{name}' "
+        f"(rating {rating}/5, {reviews} reviews). Describe the food, ambiance and what it is "
+        "known for, in a practical travel tone. No lead-in, no closing remark, no emoji, no "
+        "prices or hours unless absolutely certain. Max 25 words. Output only the sentence."
+    )
+    try:
+        desc = llm.generate(prompt, max_tokens=80).strip().strip('"').strip()
+        return desc[:200]
+    except Exception:
+        return ""
+
+
 def format_restaurants(restaurants: list[dict]) -> str:
     """Format restaurants as compact markdown grouped by cuisine.
 
-    No ### headings. Bold name, then compact bullet list of details.
+    No ### headings. Bold name only, then a short description and a plain
+    bullet list of details.
     """
     if not restaurants:
         return "No restaurants found matching the selected criteria."
@@ -139,7 +159,11 @@ def format_restaurants(restaurants: list[dict]) -> str:
         sections.append(f"## {cuisine} Restaurants\n\n---")
         for r in rest_list:
             maps_url = geo.generate_maps_url(r.get("place_id", ""), "restaurant")
+            desc = r.get("description") or _short_description(r)
             lines = [f"**{r['name']}** ({cuisine})"]
+            if desc:
+                lines.append(desc)
+                lines.append("")
             lines.append(f"- Address: {r.get('address', '')}")
             lines.append(
                 f"- Walk: {r.get('walk_duration', 'N/A')} ({r.get('walk_distance', 'N/A')})"
