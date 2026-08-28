@@ -2,6 +2,7 @@
 
 ## Project
 `/home/dbr6208/projects/myTrip_Planner/`
+GitHub: https://github.com/DBR6208/trip-planner (private)
 
 ## Architecture (current)
 - **Backend:** FastAPI (Python) on port 8000 — 11 API endpoints
@@ -11,10 +12,11 @@
   - `backend/services/` — 9 service modules (llm, city_guide, hotels, restaurants, tourist_office, geo, charging, planner, pdf)
   - `backend/requirements.txt` — pinned Python deps
 - **Frontend:** React 19 + TypeScript 6 + Vite 8 + Tailwind 4
-  - `frontend/src/App.tsx` — 6-step wizard (889 lines, single-page, react-markdown + remark-gfm)
+  - `frontend/src/App.tsx` — 6-step wizard (971 lines, single-page, react-markdown + remark-gfm)
   - `frontend/src/index.css` — DBG Travel brand theme (navy/gold, matches LaTeX PDF)
+- **LLM:** OpenRouter (openai/gpt-4o) — configurable via OPENROUTER_MODEL
 - **Original (frozen):** `myTripPlanner_V08.ipynb` — Gradio notebook, not updated
-- **Brochures:** `brochures/` — 12 existing PDFs + recent test outputs
+- **Brochures:** `brochures/` — output directory for generated PDFs (gitignored)
 
 ## Implementation status (REQUIREMENTS.md issues)
 
@@ -37,54 +39,51 @@
 | 14 | Planner rewrite with actual weekend pattern | DONE — planner.py has full Friday/Saturday/Sunday pattern |
 | 15 | Layout: TOC depth 2, no widows, no emoji, no italic | DONE — nowidow package, emoji strip, tocdepth=2 |
 
+## Recent work (this session: 2026-08-28)
+
+### GitHub setup
+- Repo created: DBR6208/trip-planner (private)
+- `gh` CLI authenticated via device flow
+- `.gitignore` created (Python, venv, .env, brochures/, node_modules, dist)
+- README.md written with full project docs, architecture, setup guide
+- README fixed: OpenRouter API key shown as primary, tech stack corrected
+- 66 files committed as initial commit + 3 follow-up pushes
+
+### Frontend UI fixes
+- **Grid breakpoints:** All tabs changed from `lg:grid-cols-*` (1024px) to `md:grid-cols-*` (768px) — two-column layout works on narrower screens
+- **Tab spacing:** Increased gap (0.5rem), padding (0.6rem 1rem), removed duplicate CSS rule
+- **Links open in new tab:** All 8 ReactMarkdown instances now pass `components={markdownComponents}` which renders `<a>` tags with `target="_blank" rel="noopener noreferrer"`
+- **Hotel list items:**
+  - Radio button sits beside hotel name in a `flex items-center gap-3` row (inline, not above)
+  - Star rating renders as actual ★★★★★ characters (amber-colored), parsed from "5-star" text string
+  - Rating and address indented at `ml-8` (2rem) under the name row
+  - Increased spacing between items (`space-y-2`)
+
 ## Action points (next session priorities)
 
-### A. Frontend CSS rework ⚡ DONE 2026-08-28
-Complete rework completed:
-- **react-markdown** (v10) + remark-gfm installed, replacing the regex `renderMarkdown()` hack and `dangerouslySetInnerHTML` — all 9 content areas now use proper GFM markdown rendering
-- **CSS polish** — full DBG brand theme applied matching the LaTeX/PDF aesthetic:
-  - Navy (`#003366`) section headings with gold (`#A07F40`) top/bottom borders — mirrors the PDF `travelblue`/`travelgold` scheme
-  - Gold horizontal rules, gold blockquote left borders, gold tab active underline
-  - Professional table styling with navy header + zebra striping
-  - Subtle warm off-white background (`#f8f7f4`) matching the brand
-  - Custom scrollbar styling
-- **Error handling** — persistent dismissible error banner (removed 5s auto-dismiss timeout)
-- **Mobile responsive** — collapsible sidebar via hamburger toggle on small screens (sidebarOpen state), sidebars hide/shown with a click
-- **DaisyUI overrides** — custom brand colors, input/radio/checkbox/button focus states
-- Production build passes cleanly (TypeScript + Vite)
+### A. PDF layout judge LLM
+The LaTeX template uses `nowidow` for widows/orphans but needs verification by a second AI model acting as a judge. See REQUIREMENTS.md for full spec.
 
-### B. PDF layout judge LLM
-The LaTeX template uses `nowidow` for widows/orphans but this needs **verification by a second AI model acting as a judge**. The judge LLM should:
-- Render or inspect the generated PDF (or its LaTeX source) for widows/orphans
-- Check heading hierarchy consistency (no ### skipping levels)
-- Verify no emoji or italic slipped through
-- Validate TOC depth and page-break logic
-- Return structured pass/fail per criterion
-- Block PDF delivery if layout fails
+### B. Docker containerization
+Package for deployment: Dockerfile (backend), Dockerfile (frontend), docker-compose.yml.
 
-This should be a separate service/call in the PDF pipeline, using a different model than the content generator (better to catch each other's mistakes).
+### C. Remaining REQUIREMENTS.md issues
+- Issue 4 (route maps in PDF): headless browser screenshot of Folium HTML → PNG → `\includegraphics`
+- Issue 10 (brochure size consistency): post-generation validation against a target range
+- Issue 13 (typo "depating"): grep the backend code to confirm it doesn't exist
 
-### C. Docker containerization
-Package the application for easy deployment:
-- **Dockerfile for backend** — Python image + FastAPI + uvicorn
-- **Dockerfile for frontend** — Node build stage + nginx static serve (or Vite preview)
-- **docker-compose.yml** — orchestrates both + exposes ports
-- **.dockerignore** for each service
-- Documentation in README on how to `docker compose up`
-
-### D. Remaining REQUIREMENTS.md issues
-- Issue 4 (route maps in PDF): investigate saving Folium HTML maps as PNG (headless browser via selenium/playwright or map screenshot tool) and embedding via `\includegraphics`
-- Issue 10 (brochure size consistency): add post-generation validation that compares against a target range
-- Issue 13 (typo "depating"): grep the new backend code to confirm it doesn't exist
+### D. Frontend improvements (based on this session)
+- Add a loading skeleton for the hotel detail area while the LLM generates descriptions
+- After hotel search, auto-select the first hotel if there's only one result
+- Consider adding a "refresh hotels" button to re-search
 
 ### E. Future (not started)
-- Move to GitHub repo
 - End-to-end test run to validate all 15 issues with a real brochure generation
 
 ## Session discipline
-- This file should be updated on a regular basis during a session — not just at the end. Each significant change (code edits, test results, decisions) gets recorded as it happens so the file always reflects the current state.
-- Keep the quickref accurate: completed issues move from "open" to "done" immediately, new blockers get added, work-in-progress items are noted.
-- Before closing a session, ensure the action points section is current so the next session can pick up without re-discovery.
+- This file should be updated mid-session after every significant change (code edits, test results, decisions)
+- Keep the quickref accurate: completed issues move from "open" to "done" immediately
+- Before closing a session, ensure the action points section is current
 
 ## Key details (user preferences)
 - Start address: Heirweg 85A, 9190 Stekene, Belgium

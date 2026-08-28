@@ -334,9 +334,9 @@ export default function App() {
 
       {/* ════════════════ TAB 0: EXPLORE ════════════════ */}
       {tab === 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-5">
           {/* Sidebar */}
-          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} lg:block`}>
+          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} md:block`}>
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
               <Compass className="w-4 h-4" />
               Destination
@@ -460,7 +460,7 @@ export default function App() {
 
       {/* ════════════════ TAB 1: HOTEL ════════════════ */}
       {tab === 1 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-5">
           {/* Sidebar */}
           <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} lg:block`}>
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
@@ -483,32 +483,38 @@ export default function App() {
                   </div>
                 )}
                 {s.hotels.length > 0 && (
-                  <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
-                    {s.hotels.map((h, i) => (
-                      <label
-                        key={i}
-                        className={`block p-2.5 rounded-lg border cursor-pointer transition-all text-sm ${
-                          s.selectedHotel?.place_id === h.place_id
-                            ? "border-brand-blue bg-blue-50/60"
-                            : "border-base-300 hover:border-gray-400"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name="hotel-select"
-                            checked={s.selectedHotel?.place_id === h.place_id}
-                            onChange={() => handleSelectHotel(h)}
-                            className="radio radio-sm"
-                          />
-                          <span className="font-medium text-sm">{h.name}</span>
-                        </div>
-                        <div className="text-xs text-gray-500 ml-6 mt-0.5">
-                          {h.star_rating} · {h.review_rating} ({h.reviews_total} reviews)
-                        </div>
-                        <div className="text-xs text-gray-400 truncate ml-6 mt-0.5">{h.address}</div>
-                      </label>
-                    ))}
+                  <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                    {s.hotels.map((h, i) => {
+                      const starNum = parseInt(h.star_rating, 10) || 0;
+                      const stars = "★".repeat(starNum) + "☆".repeat(Math.max(0, 5 - starNum));
+                      return (
+                        <label
+                          key={i}
+                          className={`block p-2.5 rounded-lg border cursor-pointer transition-all text-sm ${
+                            s.selectedHotel?.place_id === h.place_id
+                              ? "border-brand-blue bg-blue-50/60"
+                              : "border-base-300 hover:border-gray-400"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="hotel-select"
+                              checked={s.selectedHotel?.place_id === h.place_id}
+                              onChange={() => handleSelectHotel(h)}
+                              className="radio radio-sm"
+                            />
+                            <span className="font-medium text-sm leading-tight">{h.name}</span>
+                          </div>
+                          <div className="text-xs ml-8 mt-1 flex items-center gap-2 text-gray-600">
+                            <span className="text-amber-500 tracking-wide">{stars}</span>
+                            <span>{h.review_rating}</span>
+                            <span className="text-gray-400">({h.reviews_total} reviews)</span>
+                          </div>
+                          <div className="text-xs text-gray-400 truncate ml-8 mt-0.5">{h.address}</div>
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
               </>
@@ -551,9 +557,9 @@ export default function App() {
 
       {/* ════════════════ TAB 2: EATERIES ════════════════ */}
       {tab === 2 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-5">
           {/* Sidebar */}
-          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} lg:block`}>
+          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} md:block`}>
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
               <Utensils className="w-4 h-4" />
               Cuisine Selection
@@ -643,9 +649,9 @@ export default function App() {
 
       {/* ════════════════ TAB 3: ROUTE ════════════════ */}
       {tab === 3 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-5">
           {/* Sidebar */}
-          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} lg:block`}>
+          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} md:block`}>
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
               <Car className="w-4 h-4" />
               EV Route Planning
@@ -836,9 +842,9 @@ export default function App() {
 
       {/* ════════════════ TAB 4: ITINERARY ════════════════ */}
       {tab === 4 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-5">
           {/* Sidebar */}
-          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} lg:block`}>
+          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} md:block`}>
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
               <FileText className="w-4 h-4" />
               Itinerary & PDF
