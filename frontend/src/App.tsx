@@ -26,6 +26,15 @@ import {
 } from "lucide-react";
 import "./index.css";
 
+// ── Markdown link component — open in new window ──
+const markdownComponents = {
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ),
+};
+
 // ── Tab config ──
 const TABS = [
   { id: 0, label: "Explore", icon: Compass },
@@ -431,7 +440,7 @@ export default function App() {
                     City Guide — {s.city}
                   </h2>
                   <div className="scroll-content pr-1">
-                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.guideData.city_guide}</ReactMarkdown></div>
+                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.guideData.city_guide}</ReactMarkdown></div>
                   </div>
                 </div>
                 {s.guideData.tourist_office && (
@@ -440,7 +449,7 @@ export default function App() {
                       Info
                       Tourist Office
                     </h2>
-                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.guideData.tourist_office}</ReactMarkdown></div>
+                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.guideData.tourist_office}</ReactMarkdown></div>
                   </div>
                 )}
               </>
@@ -531,7 +540,7 @@ export default function App() {
                 </h2>
                 {s.hotelFormatted && (
                   <div className="scroll-content pr-1">
-                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.hotelFormatted}</ReactMarkdown></div>
+                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.hotelFormatted}</ReactMarkdown></div>
                   </div>
                 )}
               </div>
@@ -624,7 +633,7 @@ export default function App() {
                   Restaurant Selection
                 </h2>
                 <div className="scroll-content pr-1">
-                  <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.restaurantFormatted}</ReactMarkdown></div>
+                  <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.restaurantFormatted}</ReactMarkdown></div>
                 </div>
               </div>
             )}
@@ -804,7 +813,7 @@ export default function App() {
                         className="map-container mb-2"
                         dangerouslySetInnerHTML={{ __html: s.planOut.map_html }}
                       />
-                      <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.planOut.markdown}</ReactMarkdown></div>
+                      <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.planOut.markdown}</ReactMarkdown></div>
                     </div>
                     <div className="panel p-3">
                       <h3 className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
@@ -815,7 +824,7 @@ export default function App() {
                         className="map-container mb-2"
                         dangerouslySetInnerHTML={{ __html: s.planHome?.map_html || "" }}
                       />
-                      <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.planHome?.markdown || ""}</ReactMarkdown></div>
+                      <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.planHome?.markdown || ""}</ReactMarkdown></div>
                     </div>
                   </div>
                 )}
@@ -926,7 +935,7 @@ export default function App() {
                   Weekend Itinerary — {s.city}
                 </h2>
                 <div className="scroll-content pr-1">
-                  <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.itinerary}</ReactMarkdown></div>
+                  <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.itinerary}</ReactMarkdown></div>
                 </div>
               </div>
             )}
@@ -939,14 +948,14 @@ export default function App() {
                     <ChevronRight className="w-3.5 h-3.5 text-brand-blue" />
                     Way Out
                   </h3>
-                  <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.planOut.markdown}</ReactMarkdown></div>
+                  <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.planOut.markdown}</ReactMarkdown></div>
                 </div>
                 <div className="panel p-3">
                   <h3 className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
                     <ChevronDown className="w-3.5 h-3.5 text-brand-blue" />
                     Way Home
                   </h3>
-                  <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.planHome?.markdown || ""}</ReactMarkdown></div>
+                  <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.planHome?.markdown || ""}</ReactMarkdown></div>
                 </div>
               </div>
             )}
