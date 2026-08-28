@@ -460,9 +460,10 @@ export default function App() {
 
       {/* ════════════════ TAB 1: HOTEL ════════════════ */}
       {tab === 1 && (
-        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-5">
+        <div className="flex flex-row gap-5" style={{ minHeight: '60vh' }}>
           {/* Sidebar */}
-          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} lg:block`}>
+          <div className="w-[260px] flex-shrink-0">
+            <div className="panel p-4">
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
               <HotelIcon className="w-4 h-4" />
               Select Hotel
@@ -520,9 +521,10 @@ export default function App() {
               </>
             )}
           </div>
+          </div>
 
           {/* Output */}
-          <div className="space-y-4">
+          <div className="flex-1 min-w-0 space-y-4">
             {!s.selectedHotel ? (
               <div className="panel p-8 text-center">
                 <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
