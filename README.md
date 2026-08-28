@@ -51,11 +51,13 @@ uv pip install -r requirements.txt
 Create a `.env` file in the project root with your API keys:
 
 ```env
-TAVILY_API_KEY=...
-OPENAI_API_KEY=...
-ORS_API_KEY=...
-GOOGLE_MAPS_API_KEY=...
+OPENROUTER_API_KEY=...          # LLM provider (default model: openai/gpt-4o)
+TAVILY_API_KEY=...              # Web search context
+ORS_API_KEY=...                 # OpenRouteService — routing & directions
+GOOGLE_MAPS_API_KEY=...         # Places, hotel & restaurant details
 ```
+
+The LLM routes through OpenRouter using `openai/gpt-4o` by default. You can change the model by setting `OPENROUTER_MODEL` in `.env`. If `OPENROUTER_API_KEY` is not set, it falls back to `OPENAI_API_KEY`.
 
 Then start the server:
 
@@ -101,6 +103,6 @@ sudo apt install texlive-xetex texlive-latex-extra pandoc
 
 ## Tech Stack
 
-- **Backend:** FastAPI, OpenAI, Google Maps API, OpenRouteService, Tavily Search
+- **Backend:** FastAPI, OpenRouter (GPT-4o), Google Maps API, OpenRouteService, Tavily Search
 - **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind 4, DaisyUI, react-markdown
 - **PDF:** LaTeX via pandoc + xelatex
