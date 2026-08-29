@@ -177,15 +177,20 @@ def format_hotel(hotel: dict, description: str, parkings: list[dict] | None = No
         lines.append(f"- *Google Maps:* [View on Map]({maps_url})")
     lines.append(f"\n{description}")
 
-    # Parking — append nearby garage list directly after the LLM's parking section
+    # Parking — bullet list with Google Maps links
     if parkings:
-        garage_list = "; ".join(
-            f"{p['name']} ({p['address']})"
-            for p in parkings
-        )
-        lines.append(
-            f"\nNearby indoor parking garages: {garage_list}."
-        )
+        lines.append("\nNearby indoor parking garages:")
+        for p in parkings:
+            pmaps = geo.generate_maps_url(p.get("place_id", ""), "parking")
+            name = p.get("name", "")
+            addr = p.get("address", "")
+            if pmaps:
+                lines.append(
+                    f"  - **{name}** — {addr} — "
+                    f"[Google Maps]({pmaps})"
+                )
+            else:
+                lines.append(f"  - **{name}** — {addr}")
     else:
         lines.append(
             "\nNo nearby indoor parking garages within walking distance."
