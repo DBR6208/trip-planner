@@ -25,6 +25,9 @@ export const api = {
   hotels: (city: string) =>
     request<import("../types/api").HotelListRes>("/api/hotels", { city }),
 
+  hotelMap: (req: import("../types/api").HotelMapReq) =>
+    request<import("../types/api").HotelMapRes>("/api/hotels/map", req),
+
   describeHotel: (hotel: import("../types/api").Hotel) =>
     request<import("../types/api").HotelDescRes>("/api/hotels/describe", {
       hotel,

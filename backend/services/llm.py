@@ -23,7 +23,11 @@ def generate(
     model: str | None = None,
     max_tokens: int = 4000,
 ) -> str:
-    """Generate text via OpenRouter/LLM.
+    """Generate text via OpenRouter/LLM with automatic fallback on overload.
+
+    Tries the requested model (or default from config). If the response is
+    empty or the model is overloaded / rate-limited, retries once with
+    FALLBACK_MODEL silently.
 
     Args:
         prompt: The user message / main instruction.
@@ -34,20 +38,68 @@ def generate(
     Returns:
         Generated text string.
     """
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
+    models_to_try = [
+        model or config.OPENROUTER_MODEL,
+        config.FALLBACK_MODEL,
+    ]
 
-    try:
-        response = _get_client().chat.completions.create(
-            model=model or config.OPENROUTER_MODEL,
-            messages=messages,
-            max_completion_tokens=max_tokens,
-        )
-        return response.choices[0].message.content or ""
-    except Exception as e:
-        return f"Error generating response: {e}"
+    last_error = ""
+    for attempt, m in enumerate(models_to_try):
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        try:
+            response = _get_client().chat.completions.create(
+                model=m,
+                messages=messages,
+                max_completion_tokens=max_tokens,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            if content:
+                if attempt > 0:
+                    print(
+                        f"[llm] Primary model '{models_to_try[0]}' failed; "
+                        f"fell back to '{m}'"
+                    )
+                return content
+
+            last_error = "empty response"
+
+        except Exception as e:
+            err = str(e).lower()
+            # Only fall through for overload/rate-limit/bad-gateway errors
+            if any(
+                token in err
+                for token in [
+                    "503", "overloaded", "overloaded_error",
+                    "429", "rate limit", "rate_limit",
+                    "502", "bad gateway",
+                    "timeout", "timed out",
+                ]
+            ):
+                last_error = str(e)
+                print(
+                    f"[llm] Model '{m}' failed ({last_error}); "
+                    f"trying fallback..."
+                )
+                continue  # try next model
+            # Other errors (auth, bad request, etc.) — don't retry
+            return f"Error generating response: {e}"
+
+        # Empty content on a non-overloaded response — try fallback anyway
+        if not content:
+            last_error = "empty content"
+            if attempt == 0:
+                print(
+                    f"[llm] Model '{m}' returned empty content; "
+                    f"trying fallback..."
+                )
+                continue
+
+    # Both models failed
+    return f"Error generating response: {last_error}"
 
 
 def generate_with_search(
@@ -58,11 +110,18 @@ def generate_with_search(
     max_tokens: int = 2000,
 ) -> str:
     """Generate text with web search context injected."""
-    full_prompt = f"""QUESTION:
+    if search_context and search_context.strip():
+        full_prompt = f"""QUESTION:
 {prompt}
 
 WEB RESEARCH CONTEXT:
 {search_context}
 
 Provide a high-quality synthesized answer using the context above."""
+    else:
+        full_prompt = f"""QUESTION:
+{prompt}
+
+Answer concisely and factually. Do NOT ask for additional context, research material,
+or information to be supplied — just answer based on what you know."""
     return generate(full_prompt, system_prompt=system_prompt, model=model, max_tokens=max_tokens)

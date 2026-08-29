@@ -21,7 +21,7 @@ import {
   ChevronDown,
   Loader2,
   Download,
-  Coffee,
+  Calendar,
   Sun,
 } from "lucide-react";
 import "./index.css";
@@ -39,9 +39,10 @@ const markdownComponents = {
 const TABS = [
   { id: 0, label: "Explore", icon: Compass },
   { id: 1, label: "Hotel", icon: HotelIcon },
-  { id: 2, label: "Eateries", icon: Utensils },
+  { id: 2, label: "Restaurants", icon: Utensils },
   { id: 3, label: "Route", icon: Car },
-  { id: 4, label: "Itinerary", icon: Coffee },
+  { id: 4, label: "Planning", icon: Calendar },
+  { id: 5, label: "Brochure", icon: FileText },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -52,6 +53,7 @@ function tabReady(id: TabId, state: FullState): boolean {
   if (id === 2) return !!state.selectedHotel;
   if (id === 3) return state.restaurants.length > 0;
   if (id === 4) return !!state.selectedHotel;
+  if (id === 5) return !!state.guideData && !!state.selectedHotel && !!state.itinerary;
   return false;
 }
 
@@ -65,6 +67,7 @@ interface FullState {
   selectedHotel: Hotel | null;
   hotelFormatted: string;
   hotelLoading: boolean;
+  hotelMapHtml: string;
   selectedCuisines: string[];
   restaurants: Restaurant[];
   restaurantFormatted: string;
@@ -103,6 +106,7 @@ export default function App() {
     selectedHotel: null,
     hotelFormatted: "",
     hotelLoading: false,
+    hotelMapHtml: "",
     selectedCuisines: ["Local", "Italian", "Croatian", "Grill", "Steakhouse", "Seafood"],
     restaurants: [],
     restaurantFormatted: "",
@@ -161,6 +165,7 @@ export default function App() {
     try {
       const data = await api.hotels(s.city.trim());
       update("hotels", data.hotels);
+      update("hotelMapHtml", data.map_html || "");
       if (data.hotels.length === 0) update("error", "No 4–5 star hotels found in city center.");
     } catch (e) { showError(e); }
     finally { update("hotelLoading", false); }
@@ -173,6 +178,15 @@ export default function App() {
     try {
       const data = await api.describeHotel(h);
       update("hotelFormatted", data.formatted);
+      // Regenerate map with this hotel selected
+      if (s.guideData?.tourist_office_data) {
+        const mapData = await api.hotelMap({
+          hotels: s.hotels,
+          tourist_office: s.guideData.tourist_office_data,
+          selected_hotel_id: h.place_id,
+        });
+        update("hotelMapHtml", mapData.map_html);
+      }
     } catch (e) { showError(e); }
     finally { update("hotelLoading", false); }
   };
@@ -396,39 +410,45 @@ export default function App() {
                   Enter a city in the sidebar to generate a curated travel guide with local insights,
                   hidden gems, and the best places to eat, stay, and explore.
                 </p>
-                <div className="flex items-center justify-center gap-6 text-xs text-gray-400">
+                <div className="flex items-center justify-center gap-4 text-xs text-gray-400">
                   <div className="flex flex-col items-center gap-1">
-                    <svg className="w-5 h-5 text-brand-gold/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
-                    </svg>
-                    <span>Research city</span>
+                    <Compass className="w-5 h-5 text-brand-gold/60" />
+                    <span>Explore</span>
                   </div>
-                  <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"/>
                   </svg>
                   <div className="flex flex-col items-center gap-1">
-                    <svg className="w-5 h-5 text-brand-gold/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path d="M8.25 21v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21m0 0h4.5V3.545M12.75 21h7.5V10.75M2.25 21h1.5m18 0h-18M2.25 9l4.5-1.636M18.75 3l-1.5.545m0 6.205l3 1m1.5.5l-1.5-.5M6.75 7.364V3h-3v18m3-13.636l10.5-3.819"/>
-                    </svg>
-                    <span>Pick hotel</span>
+                    <HotelIcon className="w-5 h-5 text-brand-gold/60" />
+                    <span>Hotel</span>
                   </div>
-                  <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"/>
                   </svg>
                   <div className="flex flex-col items-center gap-1">
-                    <svg className="w-5 h-5 text-brand-gold/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z"/>
-                    </svg>
-                    <span>Find restaurants</span>
+                    <Utensils className="w-5 h-5 text-brand-gold/60" />
+                    <span>Restaurants</span>
                   </div>
-                  <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"/>
                   </svg>
                   <div className="flex flex-col items-center gap-1">
-                    <svg className="w-5 h-5 text-brand-gold/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/>
-                    </svg>
-                    <span>Generate PDF</span>
+                    <Car className="w-5 h-5 text-brand-gold/60" />
+                    <span>Route</span>
+                  </div>
+                  <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"/>
+                  </svg>
+                  <div className="flex flex-col items-center gap-1">
+                    <Calendar className="w-5 h-5 text-brand-gold/60" />
+                    <span>Planning</span>
+                  </div>
+                  <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"/>
+                  </svg>
+                  <div className="flex flex-col items-center gap-1">
+                    <FileText className="w-5 h-5 text-brand-gold/60" />
+                    <span>Brochure</span>
                   </div>
                 </div>
               </div>
@@ -446,10 +466,22 @@ export default function App() {
                 {s.guideData.tourist_office && (
                   <div className="panel p-4">
                     <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-                      Info
+                      <MapPin className="w-4 h-4" />
                       Tourist Office
                     </h2>
-                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.guideData.tourist_office}</ReactMarkdown></div>
+                    <div className="markdown mb-3"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.guideData.tourist_office}</ReactMarkdown></div>
+                    {s.guideData.tourist_office_map && (
+                      <div className="rounded-lg overflow-hidden border border-gray-200">
+                        <iframe
+                          srcDoc={s.guideData.tourist_office_map}
+                          title="Tourist Office Map"
+                          className="w-full"
+                          style={{ height: "600px", border: "none", overflow: "hidden" }}
+                          scrolling="no"
+                          sandbox="allow-scripts allow-popups allow-same-origin"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -525,6 +557,18 @@ export default function App() {
 
           {/* Output */}
           <div className="flex-1 min-w-0 space-y-4">
+            {s.hotelMapHtml && (
+              <div className="panel p-0 overflow-hidden rounded-xl border border-gray-200">
+                <iframe
+                  srcDoc={s.hotelMapHtml}
+                  title="Hotel Map"
+                  className="w-full"
+                  style={{ height: "600px", border: "none", overflow: "hidden" }}
+                  scrolling="no"
+                  sandbox="allow-scripts allow-popups allow-same-origin"
+                />
+              </div>
+            )}
             {!s.selectedHotel ? (
               <div className="panel p-8 text-center">
                 <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -542,15 +586,28 @@ export default function App() {
               </div>
             ) : (
               <div className="panel p-4">
-                <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-                  <HotelIcon className="w-4 h-4" />
-                  {s.selectedHotel.name}
-                </h2>
-                {s.hotelFormatted && (
-                  <div className="scroll-content pr-1">
-                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.hotelFormatted}</ReactMarkdown></div>
+                <div className="flex flex-row gap-4">
+                  {s.selectedHotel.photo_url && (
+                    <div className="w-[18rem] h-[13.5rem] flex-shrink-0 rounded-lg overflow-hidden border border-gray-200">
+                      <img
+                        src={s.selectedHotel.photo_url}
+                        alt={s.selectedHotel.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
+                      <HotelIcon className="w-4 h-4" />
+                      {s.selectedHotel.name}
+                    </h2>
+                    {s.hotelFormatted && (
+                      <div className="scroll-content pr-1">
+                        <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.hotelFormatted}</ReactMarkdown></div>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
@@ -849,7 +906,7 @@ export default function App() {
           <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} md:block`}>
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
               <FileText className="w-4 h-4" />
-              Itinerary & PDF
+              Planning & PDF
             </h2>
 
             {!s.selectedHotel ? (
@@ -871,7 +928,7 @@ export default function App() {
                     ) : (
                       <span className="flex items-center gap-1.5">
                         <Sun className="w-4 h-4" />
-                        Weekend Itinerary
+                        Weekend Planning
                       </span>
                     )}
                   </button>
@@ -931,7 +988,7 @@ export default function App() {
                   <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 5</span>
                   <div className="h-px w-8 bg-brand-gold/40" />
                 </div>
-                <h3 className="text-lg font-semibold text-brand-blue mb-1">Generate Your Itinerary</h3>
+                <h3 className="text-lg font-semibold text-brand-blue mb-1">Generate Your Weekend Plan</h3>
                 <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
                   Once you have a hotel and restaurant selections, generate a full weekend itinerary — then export it as a polished PDF brochure.
                 </p>
@@ -940,7 +997,7 @@ export default function App() {
               <div className="panel p-4">
                 <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
                   <Sun className="w-4 h-4" />
-                  Weekend Itinerary — {s.city}
+                  Weekend Planning — {s.city}
                 </h2>
                 <div className="scroll-content pr-1">
                   <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.itinerary}</ReactMarkdown></div>
@@ -973,7 +1030,7 @@ export default function App() {
 
       {/* ── Footer ── */}
       <footer className="mt-10 text-center text-xs text-gray-400 pb-6">
-        DBG Travel · Generated by Trip Planner
+        &copy; DBG Travel 2026
       </footer>
     </div>
   );

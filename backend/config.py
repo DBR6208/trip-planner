@@ -13,7 +13,10 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 # OpenRouter endpoint (using OpenAI-compatible client)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or OPENAI_API_KEY
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "z-ai/glm-5.3-flash")
+
+# Fallback model when primary is overloaded or returns empty
+FALLBACK_MODEL = "openai/gpt-4o-mini"
 
 # Departure address
 HOME_ADDRESS = "Heirweg 85A, 9190 Stekene, Belgium"

@@ -9,6 +9,7 @@ export interface CityGuideRes {
   city_guide: string;
   tourist_office: string;
   tourist_office_data: TouristOfficeData | null;
+  tourist_office_map: string;
 }
 
 export interface TouristOfficeData {
@@ -30,10 +31,22 @@ export interface Hotel {
   review_rating: string | number;
   website: string | null;
   reviews_total: number;
+  photo_url: string;
 }
 
 export interface HotelListRes {
   hotels: Hotel[];
+  map_html: string;
+}
+
+export interface HotelMapReq {
+  hotels: Hotel[];
+  tourist_office: TouristOfficeData | null;
+  selected_hotel_id: string | null;
+}
+
+export interface HotelMapRes {
+  map_html: string;
 }
 
 export interface HotelDescReq {

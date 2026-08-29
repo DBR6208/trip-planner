@@ -68,7 +68,7 @@ def generate_city_guide(city_name: str, country_name: str) -> str:
         f"## {s.upper()}\n{content}" for s, content in raw_context.items()
     )
 
-    prompt = f"""You are an expert European travel writer specialized in relaxed luxury weekend trips.
+    prompt = f"""You are an expert European travel writer specialized in relaxed weekend trips.
 
 Create a detailed but concise weekend guide for:
 

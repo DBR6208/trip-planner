@@ -46,6 +46,7 @@ class CityGuideResponse(BaseModel):
     city_guide: str
     tourist_office: str
     tourist_office_data: dict | None
+    tourist_office_map: str = ""
 
 
 class HotelSearchRequest(BaseModel):
@@ -54,6 +55,17 @@ class HotelSearchRequest(BaseModel):
 
 class HotelSearchResponse(BaseModel):
     hotels: list[dict]
+    map_html: str = ""
+
+
+class HotelMapRequest(BaseModel):
+    hotels: list[dict]
+    tourist_office: dict | None = None
+    selected_hotel_id: str | None = None
+
+
+class HotelMapResponse(BaseModel):
+    map_html: str
 
 
 class HotelDescriptionRequest(BaseModel):
@@ -128,10 +140,12 @@ def get_city_guide(req: CityGuideRequest):
         guide = guide_svc.generate_city_guide(req.city, req.country)
         office = to_svc.find_tourist_office(req.city)
         formatted_to = to_svc.format_tourist_office(office) if office else ""
+        to_map = to_svc.generate_tourist_office_map(req.city, office) if office else ""
         return CityGuideResponse(
             city_guide=guide,
             tourist_office=formatted_to,
             tourist_office_data=office,
+            tourist_office_map=to_map,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -139,24 +153,62 @@ def get_city_guide(req: CityGuideRequest):
 
 @app.post("/api/hotels", response_model=HotelSearchResponse)
 def search_hotels(req: HotelSearchRequest):
-    """Search 4-5 star hotels in a city."""
+    """Search 4-5 star hotels in a city + generate hotel map."""
     try:
         hotels = hotel_svc.find_hotels(req.city)
-        return HotelSearchResponse(hotels=hotels)
+        office = to_svc.find_tourist_office(req.city)
+        map_html = hotel_svc.generate_hotel_map(
+            hotels, tourist_office=office, selected_hotel_id=None
+        )
+        return HotelSearchResponse(hotels=hotels, map_html=map_html)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/hotels/map", response_model=HotelMapResponse)
+def hotel_map(req: HotelMapRequest):
+    """Generate / regenerate hotel map with optional selection."""
+    try:
+        map_html = hotel_svc.generate_hotel_map(
+            req.hotels,
+            tourist_office=req.tourist_office,
+            selected_hotel_id=req.selected_hotel_id,
+        )
+        return HotelMapResponse(map_html=map_html)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/hotels/describe", response_model=HotelDescriptionResponse)
 def describe_hotel(req: HotelDescriptionRequest):
-    """Get LLM description for a hotel and format it."""
+    """Get LLM description for a hotel — search the web + parking data, then generate."""
     try:
         h = req.hotel
-        desc = llm.generate_with_search(
-            f"Give a brief description of the hotel {h.get('name')} at {h.get('address')}",
-            search_context="",
+        city = geo.get_city_from_coords(h.get("latitude", 0), h.get("longitude", 0)) or ""
+        context = hotel_svc._tavily_search_hotel(h.get("name", ""), city)
+        parkings = hotel_svc._find_nearby_parking(
+            h.get("name", ""), h.get("latitude", 0), h.get("longitude", 0)
         )
-        formatted = hotel_svc.format_hotel(h, desc)
+
+        llm_prompt = (
+            f"Describe the hotel {h.get('name')} at {h.get('address')} in {city}. "
+            f"Use the web research context below for factual details. "
+            f"Structure your description with these sections:\n"
+            f"1. **Overview** — a 2-3 sentence general description of the hotel.\n"
+            f"2. **Cleanliness** — what guests say about cleanliness and maintenance.\n"
+            f"3. **Bars / Lounge** — does the hotel have a bar, lounge, or rooftop bar?\n"
+            f"4. **Restaurants** — on-site restaurants, breakfast quality, dining options.\n"
+            f"5. **Parking** — does the hotel offer on-site parking? Is it indoor, "
+            f"does it require reservation, is it guaranteed or limited? "
+            f"Describe the on-site parking situation only — do NOT list nearby garages.\n"
+            f"Keep each section concise (1-2 sentences). No introductory or closing fluff. "
+            f"No emoji, no italic. Bold only for the section labels (Overview, Cleanliness, etc.)."
+        )
+        desc = llm.generate_with_search(
+            llm_prompt,
+            search_context=context,
+        )
+        formatted = hotel_svc.format_hotel(h, desc, parkings=parkings)
         return HotelDescriptionResponse(description=desc, formatted=formatted)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
