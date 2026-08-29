@@ -5,15 +5,15 @@ A weekend trip planner web application that generates branded PDF travel brochur
 ## Architecture
 
 ```
-├── backend/          FastAPI (Python) — 11 API endpoints
+├── backend/          FastAPI (Python) — 13 API endpoints
 │   ├── main.py       App entry point
-│   ├── config.py     Constants, addresses, thresholds
+│   ├── config.py     Constants, addresses, thresholds, model selection
 │   ├── services/     9 service modules
-│   │   ├── llm.py             LLM prompt orchestration
+│   │   ├── llm.py             LLM prompt orchestration (auto-fallback on overload)
 │   │   ├── city_guide.py      City descriptions
-│   │   ├── hotels.py          Hotel search & formatting
+│   │   ├── hotels.py          Hotel search, photos, indoor parking lookup, Folium maps
 │   │   ├── restaurants.py     Restaurant search & filtering
-│   │   ├── tourist_office.py  Tourist info formatting
+│   │   ├── tourist_office.py  Tourist info + Folium map
 │   │   ├── geo.py             Geocoding & maps
 │   │   ├── charging.py        EV charging station lookup
 │   │   ├── planner.py         Weekend itinerary generation
@@ -22,10 +22,9 @@ A weekend trip planner web application that generates branded PDF travel brochur
 │       └── travel_template.tex   LaTeX template
 ├── frontend/         React 19 + TypeScript 6 + Vite 8 + Tailwind 4
 │   └── src/
-│       ├── App.tsx    6-step wizard (destination, dates, hotels, restaurants, itinerary, brochure)
+│       ├── App.tsx    6-step wizard (Explore → Hotel → Restaurants → Route → Planning → Brochure)
 │       └── index.css  DBG Travel brand theme (navy/gold)
-├── images/           City skyline images
-├── icons/            SVG icons (hotel, car, food, etc.)
+├── docs/              Screenshots and documentation images
 ├── SESSION_CONTEXT.md  Session state tracking
 ├── REQUIREMENTS.md     Feature specification & issue tracking
 └── myTripPlanner_V08.ipynb  Original Gradio notebook (frozen reference)
@@ -106,3 +105,9 @@ sudo apt install texlive-xetex texlive-latex-extra pandoc
 - **Backend:** FastAPI, OpenRouter (GPT-4o), Google Maps API, OpenRouteService, Tavily Search
 - **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind 4, DaisyUI, react-markdown
 - **PDF:** LaTeX via pandoc + xelatex
+
+## Screenshots
+
+| Explore tab | Hotel tab |
+|:---:|:---:|
+| ![Explore tab](docs/explore-tab.png) | ![Hotel tab](docs/hotel-tab.png) |
