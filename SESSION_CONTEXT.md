@@ -107,10 +107,10 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 
 ## Action points (next session priorities)
 
-### A. Verify UI end-to-end (now that Tailwind works)
-- After hard refresh, confirm: two-column hotel layout, radio beside name, amber stars, indentation
-- Test full flow: explore city → search hotels → select → restaurants → route → planning → brochure → PDF
-- Confirm Folium tourist office map renders in the Explore tab
+### A. Verify UI end-to-end
+- Hard refresh, then test full flow: Explore city → Hotels (map + photo + parking) → Restaurants → Route → Planning → Brochure → PDF
+- Confirm Folium maps render (tourist office + hotel map)
+- Confirm parking data appears in hotel detail
 
 ### B. PDF layout judge LLM
 LaTeX template uses `nowidow` but needs verification by a second AI model acting as judge. See REQUIREMENTS.md for full spec.
