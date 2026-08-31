@@ -93,8 +93,10 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 - Added `generate_restaurant_map()` to `backend/services/restaurants.py` — Folium map with hotel marker (BeautifyIcon fa-hotel) + restaurant markers (BeautifyIcon **fa-utensils**, colored by cuisine)
 - Colors: Local=`#2E7D32`, Italian=`#C62828`, Croatian=`#1565C0`, Grill=`#E65100`, Steakhouse=`#6A1B9A`, Seafood=`#00838F`
 - Default cuisines changed from all 6 pre-selected to **empty** — when empty the backend searches all 6 cuisines
-- Restaurant output area shows map (450px) above the formatted restaurant list
+- Restaurant output area shows map (600px, matching hotel map height) above the formatted restaurant list
 - `RestaurantSearchRequest` now includes `hotel` dict so the map can render the hotel marker
+- Popup includes Website + Google Maps links
+- Sidebar: colored dots next to each cuisine name matching map marker colors
 
 ### Default LLM model
 - `OPENROUTER_MODEL` changed from `z-ai/glm-5.3-flash` to `openai/gpt-4o-mini` (keeps overloading; fallback was already gpt-4o-mini)

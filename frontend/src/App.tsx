@@ -92,6 +92,16 @@ interface FullState {
   showGuide: boolean;
 }
 
+// ── Cuisine colors (matching backend) ──
+const CUI_COLORS: Record<string, string> = {
+  Local: "#2E7D32",
+  Italian: "#C62828",
+  Croatian: "#1565C0",
+  Grill: "#E65100",
+  Steakhouse: "#6A1B9A",
+  Seafood: "#00838F",
+};
+
 // ── Main App ──
 export default function App() {
   const [tab, setTab] = useState<TabId>(0);
@@ -669,6 +679,7 @@ export default function App() {
                         onChange={() => toggleCuisine(c)}
                         className="checkbox checkbox-sm"
                       />
+                      <span className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: CUI_COLORS[c] }} />
                       <span>{c}</span>
                     </label>
                   ))}
@@ -713,7 +724,7 @@ export default function App() {
                   srcDoc={s.restaurantMapHtml}
                   title="Restaurant Map"
                   className="w-full"
-                  style={{ height: "450px", border: "none", overflow: "hidden" }}
+                  style={{ height: "600px", border: "none", overflow: "hidden" }}
                   scrolling="no"
                   sandbox="allow-scripts allow-popups allow-same-origin"
                 />

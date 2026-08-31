@@ -241,12 +241,25 @@ def generate_restaurant_map(
 
         cuisine = r.get("cuisine", "")
         color = _cuisine_color(cuisine)
+
+        popup_links = []
+        maps_url = geo.generate_maps_url(r.get("place_id", ""), "restaurant")
+        if r.get("website"):
+            popup_links.append(
+                f'<a href="{r["website"]}" target="_blank">Website</a>'
+            )
+        if maps_url:
+            popup_links.append(
+                f'<a href="{maps_url}" target="_blank">Google Maps</a>'
+            )
         popup_html = (
             f"<b>{r.get('name', 'Restaurant')}</b><br>"
             f"{cuisine} · {r.get('rating', 'N/A')}/5 "
             f"({r.get('user_ratings_total', 0)} reviews)<br>"
             f"Walk: {r.get('walk_duration', 'N/A')}"
         )
+        if popup_links:
+            popup_html += "<br>" + " | ".join(popup_links)
 
         folium.Marker(
             location=[lat, lng],
