@@ -174,19 +174,25 @@ export default function App() {
   const handleSelectHotel = async (h: Hotel) => {
     update("selectedHotel", h);
     update("hotelLoading", true);
+    update("hotelFormatted", "");  // clear stale description immediately
     update("error", "");
     try {
-      const data = await api.describeHotel(h);
+      // Fire map update and LLM description in PARALLEL
+      // Map regenerates instantly (just marker colors + parking fetch)
+      // Description takes 5-10s (Tavily search + LLM)
+      const mapPromise = s.guideData?.tourist_office_data
+        ? api.hotelMap({
+            hotels: s.hotels,
+            tourist_office: s.guideData.tourist_office_data,
+            selected_hotel_id: h.place_id,
+          }).then((mapData) => update("hotelMapHtml", mapData.map_html))
+        : Promise.resolve();
+
+      const [data] = await Promise.all([
+        api.describeHotel(h),
+        mapPromise,
+      ]);
       update("hotelFormatted", data.formatted);
-      // Regenerate map with this hotel selected
-      if (s.guideData?.tourist_office_data) {
-        const mapData = await api.hotelMap({
-          hotels: s.hotels,
-          tourist_office: s.guideData.tourist_office_data,
-          selected_hotel_id: h.place_id,
-        });
-        update("hotelMapHtml", mapData.map_html);
-      }
     } catch (e) { showError(e); }
     finally { update("hotelLoading", false); }
   };
@@ -509,7 +515,7 @@ export default function App() {
                     Search 4–5 Star Hotels
                   </button>
                 )}
-                {s.hotelLoading && (
+                {s.hotels.length === 0 && s.hotelLoading && (
                   <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Searching…
@@ -557,6 +563,12 @@ export default function App() {
 
           {/* Output */}
           <div className="flex-1 min-w-0 space-y-4">
+            {s.hotelLoading && !s.hotelMapHtml && (
+              <div className="panel p-8 text-center">
+                <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin text-brand-blue/50" />
+                <p className="text-sm text-gray-500">Searching for hotels…</p>
+              </div>
+            )}
             {s.hotelMapHtml && (
               <div className="panel p-0 overflow-hidden rounded-xl border border-gray-200">
                 <iframe
@@ -601,10 +613,17 @@ export default function App() {
                       <HotelIcon className="w-4 h-4" />
                       {s.selectedHotel.name}
                     </h2>
-                    {s.hotelFormatted && (
+                    {s.hotelLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generating hotel description…
+                      </div>
+                    ) : s.hotelFormatted ? (
                       <div className="scroll-content pr-1">
                         <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.hotelFormatted}</ReactMarkdown></div>
                       </div>
+                    ) : (
+                      <p className="text-sm text-gray-400">Select a hotel to see details.</p>
                     )}
                   </div>
                 </div>

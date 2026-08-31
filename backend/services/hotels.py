@@ -1,6 +1,7 @@
 """4-5 star hotel search near city center."""
 
 import folium
+from folium.plugins import BeautifyIcon
 
 from . import geo
 from .. import config
@@ -213,13 +214,15 @@ def generate_hotel_map(
     hotels: list[dict],
     tourist_office: dict | None = None,
     selected_hotel_id: str | None = None,
+    parkings: list[dict] | None = None,
 ) -> str:
-    """Generate a Folium map showing tourist office + hotel markers.
+    """Generate a Folium map showing tourist office + hotel + parking markers.
 
-    - 5-star selected: darkred circle
-    - 4-star selected: orange circle
-    - Unselected hotels: very light grey circle
+    - 5-star selected: darkred circle BeautifyIcon with fa-hotel
+    - 4-star selected: orange circle BeautifyIcon with fa-hotel
+    - Unselected hotels: very light grey
     - When no selection yet (selected_hotel_id is None): all hotels in color
+    - Parking garages (shown only when a hotel is selected): blue circle BeautifyIcon with fa-parking
     - Tourist office: green 'info-sign' icon
     - Map centred on the tourist office (or first hotel), zoom 15.
     """
@@ -254,20 +257,18 @@ def generate_hotel_map(
             icon=folium.Icon(color="green", icon="info-sign", prefix="glyphicon"),
         ).add_to(m)
 
-    # Hotel markers — coloured circles, small
+    # Hotel markers — BeautifyIcon with hotel icon, larger
     has_selection = selected_hotel_id is not None
     for h in hotels:
         is_selected = has_selection and h.get("place_id") == selected_hotel_id
 
         if not has_selection:
             # All in color
-            icon_color = "darkred" if "5" in h.get("star_rating", "") else "orange"
+            icon_color = "#8B0000" if "5" in h.get("star_rating", "") else "#FF8C00"
         elif is_selected:
-            icon_color = "darkred" if "5" in h.get("star_rating", "") else "orange"
+            icon_color = "#8B0000" if "5" in h.get("star_rating", "") else "#FF8C00"
         else:
             icon_color = "#b0b0b0"  # medium-light grey
-
-        radius = 8 if is_selected else 6
 
         popup_html = f"<b>{h.get('name', 'Hotel')}</b><br>"
         links = []
@@ -282,15 +283,43 @@ def generate_hotel_map(
             popup_html += " | ".join(links)
         popup_html += f'<br><small>{h.get("star_rating", "")} · {h.get("review_rating", "")} ({h.get("reviews_total", 0)})</small>'
 
-        folium.CircleMarker(
+        folium.Marker(
             location=[h["latitude"], h["longitude"]],
-            radius=radius,
-            color=icon_color,
-            fill=True,
-            fill_color=icon_color,
-            fill_opacity=0.9,
             popup=folium.Popup(popup_html, max_width=350),
             tooltip=h.get("name", ""),
+            icon=BeautifyIcon(
+                icon="hotel",
+                prefix="fa",
+                icon_shape="circle",
+                border_width=2,
+                border_color=icon_color,
+                text_color="#FFFFFF",
+                background_color=icon_color,
+                inner_icon_style="font-size: 12px;",
+            ),
         ).add_to(m)
+
+    # Parking markers — blue circle with fa-parking, shown only when a hotel is selected
+    if parkings and selected_hotel_id:
+        for p in parkings:
+            if p.get("latitude") and p.get("longitude"):
+                folium.Marker(
+                    location=[p["latitude"], p["longitude"]],
+                    tooltip=p.get("name", "Parking"),
+                    popup=folium.Popup(
+                        f"<b>{p.get('name', 'Parking')}</b><br>{p.get('address', '')}",
+                        max_width=300,
+                    ),
+                    icon=BeautifyIcon(
+                        icon="parking",
+                        prefix="fa",
+                        icon_shape="circle",
+                        border_width=2,
+                        border_color="#1565C0",
+                        text_color="#FFFFFF",
+                        background_color="#1565C0",
+                        inner_icon_style="font-size: 12px;",
+                    ),
+                ).add_to(m)
 
     return m._repr_html_()

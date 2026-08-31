@@ -167,12 +167,23 @@ def search_hotels(req: HotelSearchRequest):
 
 @app.post("/api/hotels/map", response_model=HotelMapResponse)
 def hotel_map(req: HotelMapRequest):
-    """Generate / regenerate hotel map with optional selection."""
+    """Generate / regenerate hotel map with optional selection + parking markers."""
     try:
+        # Fetch parkings when a hotel is selected
+        parkings = None
+        if req.selected_hotel_id:
+            for h in req.hotels:
+                if h.get("place_id") == req.selected_hotel_id:
+                    parkings = hotel_svc._find_nearby_parking(
+                        h.get("name", ""), h.get("latitude", 0), h.get("longitude", 0)
+                    )
+                    break
+
         map_html = hotel_svc.generate_hotel_map(
             req.hotels,
             tourist_office=req.tourist_office,
             selected_hotel_id=req.selected_hotel_id,
+            parkings=parkings,
         )
         return HotelMapResponse(map_html=map_html)
     except Exception as e:
