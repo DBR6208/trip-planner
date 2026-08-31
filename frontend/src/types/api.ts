@@ -76,11 +76,13 @@ export interface Restaurant {
 export interface RestaurantSearchReq {
   hotel_address: string;
   cuisines: string[];
+  hotel: Hotel | null;
 }
 
 export interface RestaurantSearchRes {
   restaurants: Restaurant[];
   formatted: string;
+  map_html: string;
 }
 
 export interface ChargingStation {

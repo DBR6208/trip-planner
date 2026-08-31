@@ -2,8 +2,27 @@
 
 import re
 
+import folium
+from folium.plugins import BeautifyIcon
+
 from . import geo, llm
 from .. import config
+
+
+# Cuisine color mapping for map markers
+CUISINE_COLORS = {
+    "Local": "#2E7D32",
+    "Italian": "#C62828",
+    "Croatian": "#1565C0",
+    "Grill": "#E65100",
+    "Steakhouse": "#6A1B9A",
+    "Seafood": "#00838F",
+}
+
+
+def _cuisine_color(cuisine: str) -> str:
+    """Get the map marker color for a cuisine type."""
+    return CUISINE_COLORS.get(cuisine, "#757575")
 
 
 def _get_place_details(place_id: str) -> dict:
@@ -179,3 +198,70 @@ def format_restaurants(restaurants: list[dict]) -> str:
             sections.append("\n".join(lines))
 
     return "\n\n".join(sections)
+
+
+def generate_restaurant_map(
+    hotel: dict | None,
+    restaurants: list[dict],
+) -> str:
+    """Generate a Folium map with hotel marker + cuisine-colored restaurant markers.
+
+    - Hotel: BeautifyIcon fa-hotel circle (same style as hotel map)
+    - Restaurants: BeautifyIcon fa-utensils circle, colored by cuisine
+    - Map centered on the hotel, zoom 15.
+    """
+    if not hotel or not hotel.get("latitude"):
+        return ""
+
+    center = (hotel["latitude"], hotel["longitude"])
+    m = folium.Map(location=center, zoom_start=15, tiles="OpenStreetMap")
+
+    # Hotel marker
+    folium.Marker(
+        location=center,
+        tooltip=hotel.get("name", "Hotel"),
+        icon=BeautifyIcon(
+            icon="hotel",
+            prefix="fa",
+            icon_shape="circle",
+            border_width=2,
+            border_color="#8B0000",
+            text_color="#FFFFFF",
+            background_color="#8B0000",
+            inner_icon_style="font-size: 12px;",
+        ),
+    ).add_to(m)
+
+    # Restaurant markers
+    for r in restaurants:
+        lat = r.get("latitude")
+        lng = r.get("longitude")
+        if lat is None or lng is None:
+            continue
+
+        cuisine = r.get("cuisine", "")
+        color = _cuisine_color(cuisine)
+        popup_html = (
+            f"<b>{r.get('name', 'Restaurant')}</b><br>"
+            f"{cuisine} · {r.get('rating', 'N/A')}/5 "
+            f"({r.get('user_ratings_total', 0)} reviews)<br>"
+            f"Walk: {r.get('walk_duration', 'N/A')}"
+        )
+
+        folium.Marker(
+            location=[lat, lng],
+            tooltip=f"{r.get('name', '')} ({cuisine})",
+            popup=folium.Popup(popup_html, max_width=300),
+            icon=BeautifyIcon(
+                icon="utensils",
+                prefix="fa",
+                icon_shape="circle",
+                border_width=2,
+                border_color=color,
+                text_color="#FFFFFF",
+                background_color=color,
+                inner_icon_style="font-size: 12px;",
+            ),
+        ).add_to(m)
+
+    return m._repr_html_()

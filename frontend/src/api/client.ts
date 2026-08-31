@@ -33,10 +33,11 @@ export const api = {
       hotel,
     }),
 
-  restaurants: (hotel_address: string, cuisines: string[]) =>
+  restaurants: (hotel_address: string, cuisines: string[], hotel: import("../types/api").Hotel | null) =>
     request<import("../types/api").RestaurantSearchRes>("/api/restaurants", {
       hotel_address,
       cuisines,
+      hotel,
     }),
 
   route: (

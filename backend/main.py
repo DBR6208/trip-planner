@@ -80,11 +80,13 @@ class HotelDescriptionResponse(BaseModel):
 class RestaurantSearchRequest(BaseModel):
     hotel_address: str
     cuisines: list[str]
+    hotel: dict | None = None
 
 
 class RestaurantSearchResponse(BaseModel):
     restaurants: list[dict]
     formatted: str
+    map_html: str = ""
 
 
 class RouteRequest(BaseModel):
@@ -227,17 +229,28 @@ def describe_hotel(req: HotelDescriptionRequest):
 
 @app.post("/api/restaurants", response_model=RestaurantSearchResponse)
 def search_restaurants(req: RestaurantSearchRequest):
-    """Find restaurants near hotel with cuisine/walking/review filters."""
+    """Find restaurants near hotel with cuisine/walking/review filters + map."""
     try:
         coords = geo.get_google_coords(req.hotel_address)
         if not coords:
-            raise HTTPException(status_code=400, detail="Could not geocode hotel address")
-        city = geo.get_city_from_coords(coords[0], coords[1])
-        restaurants = restaurant_svc.find_restaurants(coords, req.cuisines, city)
+            return RestaurantSearchResponse(
+                restaurants=[], formatted="Could not locate hotel address."
+            )
+        city = geo.get_city_from_coords(coords[0], coords[1]) or ""
+        cuisines = req.cuisines or ["Local", "Italian", "Croatian", "Grill", "Steakhouse", "Seafood"]
+        restaurants = restaurant_svc.find_restaurants(coords, cuisines, city)
         formatted = restaurant_svc.format_restaurants(restaurants)
-        return RestaurantSearchResponse(restaurants=restaurants, formatted=formatted)
-    except HTTPException:
-        raise
+
+        # Generate map with hotel marker + restaurant markers
+        hotel = req.hotel or {"latitude": coords[0], "longitude": coords[1], "name": "Hotel"}
+        if hotel.get("latitude") is None:
+            hotel["latitude"] = coords[0]
+            hotel["longitude"] = coords[1]
+        map_html = restaurant_svc.generate_restaurant_map(hotel, restaurants)
+
+        return RestaurantSearchResponse(
+            restaurants=restaurants, formatted=formatted, map_html=map_html
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

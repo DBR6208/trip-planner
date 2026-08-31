@@ -71,6 +71,7 @@ interface FullState {
   selectedCuisines: string[];
   restaurants: Restaurant[];
   restaurantFormatted: string;
+  restaurantMapHtml: string;
   restaurantLoading: boolean;
   destCity: string;
   startBattery: number;
@@ -107,9 +108,10 @@ export default function App() {
     hotelFormatted: "",
     hotelLoading: false,
     hotelMapHtml: "",
-    selectedCuisines: ["Local", "Italian", "Croatian", "Grill", "Steakhouse", "Seafood"],
+    selectedCuisines: [],
     restaurants: [],
     restaurantFormatted: "",
+    restaurantMapHtml: "",
     restaurantLoading: false,
     destCity: "",
     startBattery: 90,
@@ -209,14 +211,18 @@ export default function App() {
   const handleSearchRestaurants = async () => {
     if (!s.selectedHotel) return;
     update("restaurantLoading", true);
+    update("restaurantFormatted", "");
+    update("restaurantMapHtml", "");
     update("error", "");
     try {
       const data = await api.restaurants(
         s.selectedHotel.address,
-        s.selectedCuisines.length > 0 ? s.selectedCuisines : ["Local"]
+        s.selectedCuisines,
+        s.selectedHotel,
       );
       update("restaurants", data.restaurants);
       update("restaurantFormatted", data.formatted);
+      update("restaurantMapHtml", data.map_html);
     } catch (e) { showError(e); }
     finally { update("restaurantLoading", false); }
   };
@@ -646,7 +652,7 @@ export default function App() {
               <p className="text-xs text-gray-400">Select a hotel first.</p>
             ) : (
               <>
-                <p className="text-xs text-gray-500 mb-2">Choose cuisines for the brochure.</p>
+                <p className="text-xs text-gray-500 mb-2">Select cuisines to search for. Leave empty to search all.</p>
                 <div className="space-y-1.5 mb-3">
                   {["Local", "Italian", "Croatian", "Grill", "Steakhouse", "Seafood"].map((c) => (
                     <label
@@ -695,6 +701,24 @@ export default function App() {
 
           {/* Output */}
           <div className="space-y-4">
+            {s.restaurantLoading && !s.restaurantMapHtml && (
+              <div className="panel p-8 text-center">
+                <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin text-brand-blue/50" />
+                <p className="text-sm text-gray-500">Searching for restaurants…</p>
+              </div>
+            )}
+            {s.restaurantMapHtml && (
+              <div className="panel p-0 overflow-hidden rounded-xl border border-gray-200">
+                <iframe
+                  srcDoc={s.restaurantMapHtml}
+                  title="Restaurant Map"
+                  className="w-full"
+                  style={{ height: "450px", border: "none", overflow: "hidden" }}
+                  scrolling="no"
+                  sandbox="allow-scripts allow-popups allow-same-origin"
+                />
+              </div>
+            )}
             {!s.restaurantFormatted ? (
               <div className="panel p-8 text-center">
                 <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -711,15 +735,17 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              <div className="panel p-4">
-                <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-                  <Utensils className="w-4 h-4" />
-                  Restaurant Selection
-                </h2>
-                <div className="scroll-content pr-1">
-                  <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.restaurantFormatted}</ReactMarkdown></div>
+              <>
+                <div className="panel p-4">
+                  <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
+                    <Utensils className="w-4 h-4" />
+                    Restaurant Selection
+                  </h2>
+                  <div className="scroll-content pr-1">
+                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.restaurantFormatted}</ReactMarkdown></div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
