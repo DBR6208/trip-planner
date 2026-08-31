@@ -895,63 +895,68 @@ export default function App() {
                   <p className="text-xs text-gray-600 mt-2 font-medium">{s.routeInfo}</p>
                 )}
 
-                {/* Station selectors */}
+                {/* Station selectors — checkbox per direction */}
                 {s.routeStations.length > 0 && (
                   <>
                     <hr className="my-3 border-base-300" />
-                    <p className="text-xs font-medium text-gray-600 mb-1.5">Way Out Stops</p>
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {s.routeStations.map((st, i) => (
-                        <button
-                          key={i}
-                          onClick={() =>
-                            set((prev) => ({
-                              ...prev,
-                              selectedOut: prev.selectedOut.find((x) => x.location === st.location)
-                                ? prev.selectedOut.filter((x) => x.location !== st.location)
-                                : [...prev.selectedOut, st],
-                            }))
-                          }
-                          className={`btn btn-xs ${
-                            s.selectedOut.find((x) => x.location === st.location)
-                              ? "btn-primary"
-                              : "btn-outline"
-                          }`}
-                        >
-                          {st.brand}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs font-medium text-gray-600 mb-1.5">
-                      Return Stops{" "}
-                      <span className="text-gray-400 font-normal">(optional)</span>
+                    <p className="text-xs font-medium text-gray-600 mb-2">
+                      Charging Stations
                     </p>
-                    <div className="flex flex-wrap gap-1.5 mb-3">
+                    <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
                       {s.routeStations.map((st, i) => (
-                        <button
+                        <div
                           key={i}
-                          onClick={() =>
-                            set((prev) => ({
-                              ...prev,
-                              selectedHome: prev.selectedHome.find((x) => x.location === st.location)
-                                ? prev.selectedHome.filter((x) => x.location !== st.location)
-                                : [...prev.selectedHome, st],
-                            }))
-                          }
-                          className={`btn btn-xs ${
-                            s.selectedHome.find((x) => x.location === st.location)
-                              ? "btn-success"
-                              : "btn-outline"
-                          }`}
+                          className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg border border-base-300 text-xs"
                         >
-                          {st.brand}
-                        </button>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-700 truncate">
+                              {st.brand}
+                            </div>
+                            <div className="text-gray-400 truncate">
+                              {st.location}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 pt-0.5">
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="checkbox checkbox-xs"
+                                checked={!!s.selectedOut.find((x) => x.location === st.location)}
+                                onChange={() =>
+                                  set((prev) => ({
+                                    ...prev,
+                                    selectedOut: prev.selectedOut.find((x) => x.location === st.location)
+                                      ? prev.selectedOut.filter((x) => x.location !== st.location)
+                                      : [...prev.selectedOut, st],
+                                  }))
+                                }
+                              />
+                              <span className="text-[11px] text-brand-blue">Out</span>
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="checkbox checkbox-xs"
+                                checked={!!s.selectedHome.find((x) => x.location === st.location)}
+                                onChange={() =>
+                                  set((prev) => ({
+                                    ...prev,
+                                    selectedHome: prev.selectedHome.find((x) => x.location === st.location)
+                                      ? prev.selectedHome.filter((x) => x.location !== st.location)
+                                      : [...prev.selectedHome, st],
+                                  }))
+                                }
+                              />
+                              <span className="text-[11px] text-gray-500">Home</span>
+                            </label>
+                          </div>
+                        </div>
                       ))}
                     </div>
                     <button
                       onClick={handlePlanTrip}
                       disabled={s.selectedOut.length === 0 || s.planLoading}
-                      className="btn btn-primary btn-sm w-full"
+                      className="btn btn-primary btn-sm w-full mt-2"
                     >
                       {s.planLoading ? (
                         <span className="flex items-center gap-2">
