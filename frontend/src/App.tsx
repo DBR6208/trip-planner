@@ -109,7 +109,7 @@ const CUI_COLORS: Record<string, string> = {
 const START_ADDRESSES = [
   "Leuvensesteenweg 431, 2812 Mechelen",
   "Heirweg 85A, 9190 Stekene, Belgium",
-  "Regntiestraat 41D, 9190 Stekene",
+  "Regentiestraat 41D, 9190 Stekene",
 ];
 
 // ── Main App ──
@@ -785,8 +785,8 @@ export default function App() {
               <Car className="w-4 h-4" />
               EV Route Planning
             </h2>
-            {s.restaurants.length === 0 ? (
-              <p className="text-xs text-gray-400">Complete restaurant search first.</p>
+            {!s.selectedHotel ? (
+              <p className="text-xs text-gray-400">Select a hotel for the destination.</p>
             ) : (
               <>
                 <fieldset className="fieldset gap-2">

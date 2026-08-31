@@ -102,7 +102,7 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 - `OPENROUTER_MODEL` changed from `z-ai/glm-5.3-flash` to `openai/gpt-4o-mini` (keeps overloading; fallback was already gpt-4o-mini)
 
 ### Route tab — start address dropdown + hotel auto-destination
-- **Start address:** 3 preset radio buttons (Leuvensesteenweg 431, Mechelen / Heirweg 85A, Stekene / Regntiestraat 41D, Stekene) + "Other…" option with free-text input
+- **Start address:** 3 preset radio buttons (Leuvensesteenweg 431, Mechelen / Heirweg 85A, Stekene / Regentiestraat 41D, Stekene) + "Other…" option with free-text input
 - **Destination:** auto-set to the selected hotel's address (updated when hotel is selected in Hotel tab), shown as a read-only box
 - `handleFindRoute` and `handlePlanTrip` both use the selected start address from state
 - `destCity` replaced with `destAddress` throughout the state
