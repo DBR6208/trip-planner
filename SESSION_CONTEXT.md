@@ -106,6 +106,7 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 - **Destination:** auto-set to the selected hotel's address (updated when hotel is selected in Hotel tab), shown as a read-only box
 - `handleFindRoute` and `handlePlanTrip` both use the selected start address from state
 - `destCity` replaced with `destAddress` throughout the state
+- **Charging station list:** single scrollable list with full brand name + location, each row has two independent checkboxes (Out / Home) — supports selecting multiple stations per direction
 
 ## Recent work (2026-08-29)
 
