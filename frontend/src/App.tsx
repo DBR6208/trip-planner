@@ -73,7 +73,10 @@ interface FullState {
   restaurantFormatted: string;
   restaurantMapHtml: string;
   restaurantLoading: boolean;
-  destCity: string;
+  destAddress: string;
+  startAddress: string;
+  startAddressPreset: number;
+  startAddressCustom: string;
   startBattery: number;
   routeMap: string;
   routeStations: ChargingStation[];
@@ -102,6 +105,13 @@ const CUI_COLORS: Record<string, string> = {
   Seafood: "#00838F",
 };
 
+// ── Start address presets ──
+const START_ADDRESSES = [
+  "Leuvensesteenweg 431, 2812 Mechelen",
+  "Heirweg 85A, 9190 Stekene, Belgium",
+  "Regntiestraat 41D, 9190 Stekene",
+];
+
 // ── Main App ──
 export default function App() {
   const [tab, setTab] = useState<TabId>(0);
@@ -123,7 +133,10 @@ export default function App() {
     restaurantFormatted: "",
     restaurantMapHtml: "",
     restaurantLoading: false,
-    destCity: "",
+    destAddress: "",
+    startAddress: START_ADDRESSES[0],
+    startAddressPreset: 0,
+    startAddressCustom: "",
     startBattery: 90,
     routeMap: "",
     routeStations: [],
@@ -186,7 +199,8 @@ export default function App() {
   const handleSelectHotel = async (h: Hotel) => {
     update("selectedHotel", h);
     update("hotelLoading", true);
-    update("hotelFormatted", "");  // clear stale description immediately
+    update("hotelFormatted", "");
+    update("destAddress", h.address);
     update("error", "");
     try {
       // Fire map update and LLM description in PARALLEL
@@ -238,11 +252,11 @@ export default function App() {
   };
 
   const handleFindRoute = async () => {
-    if (!s.destCity.trim()) return;
+    if (!s.destAddress.trim()) return;
     update("routeLoading", true);
     update("error", "");
     try {
-      const data = await api.route(s.destCity.trim(), s.startBattery);
+      const data = await api.route(s.destAddress.trim(), s.startBattery, s.startAddress);
       update("routeMap", data.map_html);
       update("routeStations", data.stations);
       update("routeInfo", `Distance: ${data.distance_km} km · Arrival: ${data.arrival_battery}% · ${data.stations.length} stations`);
@@ -263,8 +277,8 @@ export default function App() {
     update("error", "");
     try {
       const data = await api.planTrip({
-        start_address: "Heirweg 85A, 9190 Stekene, Belgium",
-        end_address: s.destCity.trim(),
+        start_address: s.startAddress,
+        end_address: s.destAddress,
         start_battery: s.startBattery,
         selected_stations_out: s.selectedOut,
         selected_stations_home: s.selectedHome.length > 0 ? s.selectedHome : [],
@@ -776,14 +790,77 @@ export default function App() {
             ) : (
               <>
                 <fieldset className="fieldset gap-2">
-                  <input
-                    type="text"
-                    placeholder="Destination city"
-                    value={s.destCity}
-                    onChange={(e) => update("destCity", e.target.value)}
-                    className="input w-full text-sm"
-                  />
-                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                  <label className="text-xs font-medium text-gray-600">Starting from</label>
+                  {START_ADDRESSES.map((addr, i) => (
+                    <label
+                      key={i}
+                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs ${
+                        s.startAddressPreset === i
+                          ? "border-brand-blue bg-blue-50/60"
+                          : "border-base-300 hover:border-gray-400"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="start-address"
+                        checked={s.startAddressPreset === i}
+                        onChange={() => {
+                          set((prev) => ({
+                            ...prev,
+                            startAddressPreset: i,
+                            startAddress: addr,
+                            startAddressCustom: "",
+                          }));
+                        }}
+                        className="radio radio-sm"
+                      />
+                      <span className="truncate">{addr.split(",")[0]}</span>
+                    </label>
+                  ))}
+                  <label
+                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs ${
+                      s.startAddressPreset === -1
+                        ? "border-brand-blue bg-blue-50/60"
+                        : "border-base-300 hover:border-gray-400"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="start-address"
+                      checked={s.startAddressPreset === -1}
+                      onChange={() => {
+                        set((prev) => ({
+                          ...prev,
+                          startAddressPreset: -1,
+                          startAddress: prev.startAddressCustom,
+                        }));
+                      }}
+                      className="radio radio-sm"
+                    />
+                    <span>Other…</span>
+                  </label>
+                  {s.startAddressPreset === -1 && (
+                    <input
+                      type="text"
+                      placeholder="Enter start address"
+                      value={s.startAddressCustom}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        set((prev) => ({
+                          ...prev,
+                          startAddressCustom: v,
+                          startAddress: v,
+                        }));
+                      }}
+                      className="input w-full text-sm"
+                    />
+                  )}
+                  <hr className="my-1 border-base-300" />
+                  <label className="text-xs font-medium text-gray-600">Destination</label>
+                  <div className="text-xs text-gray-700 bg-gray-50 rounded-lg px-2.5 py-2 border border-gray-200 truncate">
+                    {s.destAddress || "Select a hotel first"}
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-gray-600 mt-1">
                     Battery %
                     <input
                       type="range"
@@ -797,7 +874,7 @@ export default function App() {
                   </label>
                   <button
                     onClick={handleFindRoute}
-                    disabled={!s.destCity.trim() || s.routeLoading}
+                    disabled={!s.destAddress.trim() || !s.startAddress.trim() || s.routeLoading}
                     className="btn btn-primary btn-sm mt-1"
                   >
                     {s.routeLoading ? (
