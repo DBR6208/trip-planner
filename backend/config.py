@@ -66,3 +66,6 @@ CHARGING_STATIONS_FILE = os.path.join(
 
 # PDF output
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "brochures")
+
+# Charging stop recommendation
+TARGET_ARRIVAL_BATTERY = 60.0  # target % when arriving at a charging stop or destination

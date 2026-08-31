@@ -13,6 +13,68 @@ from . import geo
 from .. import config
 
 
+def _recommend_stations(
+    route_coords: list,
+    stations: list[dict],
+    start_battery: float,
+    reverse: bool = False,
+) -> list[dict]:
+    """Recommend charging stops to arrive at each stop/destination with ~target battery.
+
+    Projects stations onto the route line, sorts by physical position along route
+    (from start to destination for way out, from destination back to start for way home),
+    then walks through in order. If arriving at a station would put battery below the
+    target (60%), marks it as a recommended stop and resets battery to CHARGE_UP_TO_PERCENT.
+
+    Returns list of recommended station dicts (empty if none needed).
+    """
+    target = config.TARGET_ARRIVAL_BATTERY
+    charge_to = config.CHARGE_UP_TO_PERCENT
+
+    if not route_coords or not stations:
+        return []
+
+    line = shapely.geometry.LineString(route_coords)
+
+    # Project stations onto route line (distance-from-start in km)
+    projected = []
+    for s in stations:
+        pt = shapely.geometry.Point(s["longitude"], s["latitude"])
+        dist = line.project(pt, normalized=False) * 111.0
+        projected.append({**s, "_dist": dist})
+
+    total_length = line.length * 111.0
+
+    if reverse:
+        # Way home: walk from destination back to start
+        # Sort by position-from-end ascending (closest to dest first)
+        projected.sort(key=lambda x: total_length - x["_dist"])
+        last_pos_s = total_length  # start at destination end
+    else:
+        # Way out: walk from start to destination
+        projected.sort(key=lambda x: x["_dist"])
+        last_pos_s = 0  # start at departure
+
+    recommended = []
+    battery = start_battery
+
+    for s in projected:
+        s_dist = s["_dist"]  # distance-from-start in km
+        # Distance from last charged position to this station, along route direction
+        leg_km = abs(s_dist - last_pos_s)
+
+        if leg_km < 1:
+            continue
+
+        arrival = geo.remaining_battery(battery, leg_km)
+        if arrival < target:
+            recommended.append({k: v for k, v in s.items() if not k.startswith("_")})
+            battery = charge_to
+            last_pos_s = s_dist
+
+    return recommended
+
+
 def _load_stations() -> gpd.GeoDataFrame | None:
     """Load charging stations from CSV and filter to preferred brands."""
     try:
@@ -114,6 +176,12 @@ def find_route_and_stations(
         "route_geojson": route,
         "route_coords": route_coords,
         "start_battery": start_battery,
+        "recommended_out": _recommend_stations(
+            route_coords, stations, start_battery, reverse=False
+        ),
+        "recommended_home": _recommend_stations(
+            route_coords, stations, arrival, reverse=True
+        ),
     }
 
 

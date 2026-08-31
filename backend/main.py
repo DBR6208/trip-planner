@@ -102,6 +102,8 @@ class RouteResponse(BaseModel):
     start_coords: list | None = None
     end_coords: list | None = None
     stations: list[dict]
+    recommended_out: list[dict] = []
+    recommended_home: list[dict] = []
 
 
 class PlanTripRequest(BaseModel):
@@ -271,6 +273,8 @@ def find_route(req: RouteRequest):
             start_coords=list(result.get("start_coords", [])),
             end_coords=list(result.get("end_coords", [])),
             stations=result.get("stations", []),
+            recommended_out=result.get("recommended_out", []),
+            recommended_home=result.get("recommended_home", []),
         )
     except HTTPException:
         raise

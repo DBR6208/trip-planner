@@ -105,6 +105,8 @@ export interface RouteRes {
   start_coords: [number, number] | null;
   end_coords: [number, number] | null;
   stations: ChargingStation[];
+  recommended_out: ChargingStation[];
+  recommended_home: ChargingStation[];
 }
 
 export interface PlanTripReq {

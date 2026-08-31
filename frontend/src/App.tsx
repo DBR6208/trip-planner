@@ -254,16 +254,20 @@ export default function App() {
   const handleFindRoute = async () => {
     if (!s.destAddress.trim()) return;
     update("routeLoading", true);
+    update("routeMap", "");
+    update("routeStations", []);
+    update("selectedOut", []);
+    update("selectedHome", []);
+    update("planOut", null);
+    update("planHome", null);
     update("error", "");
     try {
       const data = await api.route(s.destAddress.trim(), s.startBattery, s.startAddress);
       update("routeMap", data.map_html);
       update("routeStations", data.stations);
+      update("selectedOut", data.recommended_out);
+      update("selectedHome", data.recommended_home);
       update("routeInfo", `Distance: ${data.distance_km} km · Arrival: ${data.arrival_battery}% · ${data.stations.length} stations`);
-      update("selectedOut", []);
-      update("selectedHome", []);
-      update("planOut", null);
-      update("planHome", null);
     } catch (e) { showError(e); }
     finally { update("routeLoading", false); }
   };
