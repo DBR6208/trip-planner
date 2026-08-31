@@ -1,4 +1,4 @@
-# Session Context — 2026-08-29
+# Session Context — 2026-08-31
 
 ## Project
 `/home/dbr6208/projects/myTrip_Planner/`
@@ -109,8 +109,10 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 - **Charging station list:** single scrollable list with full brand name + location, each row has two independent checkboxes (Out / Home) — supports selecting multiple stations per direction
 
 ### Route tab — charging stop recommendation
-- New algorithm in `charging._recommend_stations()`: projects stations onto route line, walks in route order. When battery drops below 60%, scans ahead 10km and picks the highest-priority brand
+- New algorithm in `charging._recommend_stations()`: minimizes charging stops by only charging when needed to reach the end with at least the target battery (60%)
+- Within reachable candidates, picks the highest-priority brand; among same brand, picks the farthest station (minimizes stops)
 - **Brand preference:** Circle K → Ionity → Fastned → others
+- **Minimum battery safety floor:** 30% (won't recommend stations that would arrive below 30%, won't leave destination reachable below 30%)
 - Works for both way out and way home (reverse direction)
 - `find_route_and_stations()` returns `recommended_out` and `recommended_home` arrays
 - Frontend `handleFindRoute` auto-checks recommended stations in `selectedOut`/`selectedHome`
@@ -152,7 +154,13 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 
 ## Action points (next session priorities)
 
-### A. Verify UI end-to-end
+### A. Test charging stop recommendation end-to-end
+- Verify algorithm picks Circle K > Ionity > Fastned > others
+- Verify minimizes stops (1 per direction for ~160km trip)
+- Verify min_battery floor of 30% is respected
+- Confirm auto-check works on route search
+
+### B. Verify UI end-to-end
 - Hard refresh, then test full flow: Explore city → Hotels (map + photo + parking) → Restaurants → Route → Planning → Brochure → PDF
 - Confirm Folium maps render (tourist office + hotel map)
 - Confirm parking data appears in hotel detail

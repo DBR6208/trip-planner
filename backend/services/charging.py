@@ -19,21 +19,24 @@ def _recommend_stations(
     start_battery: float,
     reverse: bool = False,
 ) -> list[dict]:
-    """Recommend charging stops to arrive at each stop/destination with ~target battery.
+    """Recommend minimal charging stops to arrive with ~target battery.
 
-    Walks stations in route order (nearest first for way out, closest to destination
-    first for way home). When battery drops below target, scans ahead within a small
-    window (10km) and picks the highest-priority brand available.
+    Strategy: if the current battery can't reach the end with at least the target
+    battery (60%), find a station that:
+      a) is reachable (arrival >= min_battery 15%)
+      b) after charging to 90%, the end is reachable
+    Among those, pick the best brand (Circle K > Ionity > Fastned > others).
+    Repeat from that station until the end is reachable. Minimizes stops by
+    only charging when needed.
 
-    Brand preference order: Circle K → Ionity → Fastned → others.
+    Brand preference: Circle K → Ionity → Fastned → others.
 
     Returns list of recommended station dicts (empty if none needed).
     """
-    target = config.TARGET_ARRIVAL_BATTERY
     charge_to = config.CHARGE_UP_TO_PERCENT
-    LOOKAHEAD_KM = 10.0
+    target = config.TARGET_ARRIVAL_BATTERY
+    min_battery = 30.0
 
-    # Brand priority (lower = better)
     BRAND_PRIORITY = {
         "Circle K": 0,
         "Ionity": 1,
@@ -44,8 +47,6 @@ def _recommend_stations(
         return []
 
     line = shapely.geometry.LineString(route_coords)
-
-    # Project stations onto route line (distance-from-start in km)
     projected = []
     for s in stations:
         pt = shapely.geometry.Point(s["longitude"], s["latitude"])
@@ -55,54 +56,51 @@ def _recommend_stations(
 
     total_length = line.length * 111.0
 
-    # Sort in pure route order
     if reverse:
         projected.sort(key=lambda x: total_length - x["_dist"])
-        last_pos_s = total_length
+        current_pos = total_length
+        end_pos = 0
     else:
         projected.sort(key=lambda x: x["_dist"])
-        last_pos_s = 0
+        current_pos = 0
+        end_pos = total_length
 
     recommended = []
     battery = start_battery
-    i = 0
 
-    while i < len(projected):
-        s = projected[i]
-        s_dist = s["_dist"]
-        leg_km = abs(s_dist - last_pos_s)
+    while True:
+        # Can we reach the end with at least the target battery?
+        remaining_to_end = abs(end_pos - current_pos)
+        if geo.remaining_battery(battery, remaining_to_end) >= target:
+            break  # no charge needed
 
-        if leg_km < 1:
-            i += 1
-            continue
+        # Need a charge. Find viable candidates.
+        candidates = []
+        for s in projected:
+            s_dist = s["_dist"]
+            s_leg = abs(s_dist - current_pos)
+            if s_leg < 1:
+                continue
+            s_arrival = geo.remaining_battery(battery, s_leg)
+            if s_arrival < min_battery:
+                continue
+            remaining_after = abs(end_pos - s_dist)
+            if geo.remaining_battery(charge_to, remaining_after) >= min_battery:
+                candidates.append(s)
 
-        arrival = geo.remaining_battery(battery, leg_km)
-        if arrival >= target:
-            # Fine, keep going
-            battery = arrival
-            last_pos_s = s_dist
-            i += 1
-            continue
+        if not candidates:
+            break
 
-        # Battery would drop below target — look ahead for preferred brands
-        best_idx = i
-        best_prio = s["_prio"]
-        j = i + 1
-        while j < len(projected):
-            ahead_dist = projected[j]["_dist"]
-            ahead_leg = abs(ahead_dist - last_pos_s)
-            if ahead_leg - leg_km > LOOKAHEAD_KM:
-                break  # too far ahead
-            if projected[j]["_prio"] < best_prio:
-                best_idx = j
-                best_prio = projected[j]["_prio"]
-            j += 1
+        # Best brand; among same brand, pick farthest to minimize stops
+        candidates.sort(key=lambda x: (
+            x["_prio"],
+            -abs(x["_dist"] - current_pos),  # farthest reachable first
+        ))
+        chosen = candidates[0]
 
-        chosen = projected[best_idx]
         recommended.append({k: v for k, v in chosen.items() if not k.startswith("_")})
         battery = charge_to
-        last_pos_s = chosen["_dist"]
-        i = best_idx + 1  # skip past chosen station
+        current_pos = chosen["_dist"]
 
     return recommended
 
