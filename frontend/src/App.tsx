@@ -51,7 +51,7 @@ function tabReady(id: TabId, state: FullState): boolean {
   if (id === 0) return true;
   if (id === 1) return !!state.guideData;
   if (id === 2) return !!state.selectedHotel;
-  if (id === 3) return state.restaurants.length > 0;
+  if (id === 3) return !!state.selectedHotel;
   if (id === 4) return !!state.selectedHotel;
   if (id === 5) return !!state.guideData && !!state.selectedHotel && !!state.itinerary;
   return false;

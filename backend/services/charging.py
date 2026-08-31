@@ -21,15 +21,24 @@ def _recommend_stations(
 ) -> list[dict]:
     """Recommend charging stops to arrive at each stop/destination with ~target battery.
 
-    Projects stations onto the route line, sorts by physical position along route
-    (from start to destination for way out, from destination back to start for way home),
-    then walks through in order. If arriving at a station would put battery below the
-    target (60%), marks it as a recommended stop and resets battery to CHARGE_UP_TO_PERCENT.
+    Walks stations in route order (nearest first for way out, closest to destination
+    first for way home). When battery drops below target, scans ahead within a small
+    window (10km) and picks the highest-priority brand available.
+
+    Brand preference order: Circle K → Ionity → Fastned → others.
 
     Returns list of recommended station dicts (empty if none needed).
     """
     target = config.TARGET_ARRIVAL_BATTERY
     charge_to = config.CHARGE_UP_TO_PERCENT
+    LOOKAHEAD_KM = 10.0
+
+    # Brand priority (lower = better)
+    BRAND_PRIORITY = {
+        "Circle K": 0,
+        "Ionity": 1,
+        "Fastned": 2,
+    }
 
     if not route_coords or not stations:
         return []
@@ -41,36 +50,59 @@ def _recommend_stations(
     for s in stations:
         pt = shapely.geometry.Point(s["longitude"], s["latitude"])
         dist = line.project(pt, normalized=False) * 111.0
-        projected.append({**s, "_dist": dist})
+        priority = BRAND_PRIORITY.get(s.get("brand", ""), 99)
+        projected.append({**s, "_dist": dist, "_prio": priority})
 
     total_length = line.length * 111.0
 
+    # Sort in pure route order
     if reverse:
-        # Way home: walk from destination back to start
-        # Sort by position-from-end ascending (closest to dest first)
         projected.sort(key=lambda x: total_length - x["_dist"])
-        last_pos_s = total_length  # start at destination end
+        last_pos_s = total_length
     else:
-        # Way out: walk from start to destination
         projected.sort(key=lambda x: x["_dist"])
-        last_pos_s = 0  # start at departure
+        last_pos_s = 0
 
     recommended = []
     battery = start_battery
+    i = 0
 
-    for s in projected:
-        s_dist = s["_dist"]  # distance-from-start in km
-        # Distance from last charged position to this station, along route direction
+    while i < len(projected):
+        s = projected[i]
+        s_dist = s["_dist"]
         leg_km = abs(s_dist - last_pos_s)
 
         if leg_km < 1:
+            i += 1
             continue
 
         arrival = geo.remaining_battery(battery, leg_km)
-        if arrival < target:
-            recommended.append({k: v for k, v in s.items() if not k.startswith("_")})
-            battery = charge_to
+        if arrival >= target:
+            # Fine, keep going
+            battery = arrival
             last_pos_s = s_dist
+            i += 1
+            continue
+
+        # Battery would drop below target — look ahead for preferred brands
+        best_idx = i
+        best_prio = s["_prio"]
+        j = i + 1
+        while j < len(projected):
+            ahead_dist = projected[j]["_dist"]
+            ahead_leg = abs(ahead_dist - last_pos_s)
+            if ahead_leg - leg_km > LOOKAHEAD_KM:
+                break  # too far ahead
+            if projected[j]["_prio"] < best_prio:
+                best_idx = j
+                best_prio = projected[j]["_prio"]
+            j += 1
+
+        chosen = projected[best_idx]
+        recommended.append({k: v for k, v in chosen.items() if not k.startswith("_")})
+        battery = charge_to
+        last_pos_s = chosen["_dist"]
+        i = best_idx + 1  # skip past chosen station
 
     return recommended
 

@@ -109,11 +109,13 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 - **Charging station list:** single scrollable list with full brand name + location, each row has two independent checkboxes (Out / Home) — supports selecting multiple stations per direction
 
 ### Route tab — charging stop recommendation
-- New algorithm in `charging._recommend_stations()`: projects stations onto route line, walks forward, and auto-selects charging stops so you arrive at each stop and destination with ~60% battery
+- New algorithm in `charging._recommend_stations()`: projects stations onto route line, walks in route order. When battery drops below 60%, scans ahead 10km and picks the highest-priority brand
+- **Brand preference:** Circle K → Ionity → Fastned → others
 - Works for both way out and way home (reverse direction)
 - `find_route_and_stations()` returns `recommended_out` and `recommended_home` arrays
 - Frontend `handleFindRoute` auto-checks recommended stations in `selectedOut`/`selectedHome`
 - Config: `TARGET_ARRIVAL_BATTERY = 60.0`
+- **Tab readiness:** Route tab (id=3) now shows green checkmark when a hotel is selected (no longer requires restaurant search first)
 
 ## Recent work (2026-08-29)
 
