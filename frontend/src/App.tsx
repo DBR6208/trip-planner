@@ -985,7 +985,7 @@ export default function App() {
                 </div>
                 <h3 className="text-lg font-semibold text-brand-blue mb-1">Plan Your EV Route</h3>
                 <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
-                  Enter your destination city and battery percentage. The route planner calculates the journey including charging stops along the way.
+                  Enter your start address and destination. The route planner calculates the journey including charging stops along the way.
                 </p>
               </div>
             ) : (
