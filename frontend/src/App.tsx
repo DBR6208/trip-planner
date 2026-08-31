@@ -1008,7 +1008,7 @@ export default function App() {
                         Way Out
                       </h3>
                       <div
-                        className="map-container mb-2"
+                        className="map-container-sm mb-2"
                         dangerouslySetInnerHTML={{ __html: s.planOut.map_html }}
                       />
                       <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.planOut.markdown}</ReactMarkdown></div>
@@ -1019,7 +1019,7 @@ export default function App() {
                         Way Home
                       </h3>
                       <div
-                        className="map-container mb-2"
+                        className="map-container-sm mb-2"
                         dangerouslySetInnerHTML={{ __html: s.planHome?.map_html || "" }}
                       />
                       <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.planHome?.markdown || ""}</ReactMarkdown></div>
