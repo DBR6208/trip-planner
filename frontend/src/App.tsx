@@ -35,6 +35,10 @@ const markdownComponents = {
   ),
 };
 
+function cap(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
 // ── Tab config ──
 const TABS = [
   { id: 0, label: "Explore", icon: Compass },
@@ -303,32 +307,14 @@ export default function App() {
         s.selectedHotel.name,
         s.selectedHotel.address,
         s.restaurantFormatted,
-        s.guideData?.city_guide || ""
+        [
+          s.guideData?.city_guide || "",
+          s.guideData?.tourist_office || "",
+        ].filter(Boolean).join("\n\n"),
       );
       update("itinerary", data.itinerary);
     } catch (e) { showError(e); }
     finally { update("itineraryLoading", false); }
-  };
-
-  const handleGeneratePDF = async () => {
-    if (!s.guideData || !s.selectedHotel) return;
-    update("pdfLoading", true);
-    update("error", "");
-    try {
-      const data = await api.generatePDF({
-        city: s.city,
-        country: s.country || "Germany",
-        city_guide: s.guideData.city_guide,
-        tourist_office: s.guideData.tourist_office,
-        hotel: s.hotelFormatted,
-        restaurants: s.restaurantFormatted,
-        journey_out: s.planOut?.markdown || "",
-        journey_home: s.planHome?.markdown || "",
-        planner: s.itinerary,
-      });
-      update("pdfUrl", data.download_url);
-    } catch (e) { showError(e); }
-    finally { update("pdfLoading", false); }
   };
 
   // ── Render ──
@@ -497,7 +483,7 @@ export default function App() {
                 <div className="panel p-4">
                   <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
                     <MapPin className="w-4 h-4" />
-                    City Guide — {s.city}
+                    City Guide — {cap(s.city)}
                   </h2>
                   <div className="scroll-content pr-1">
                     <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.guideData.city_guide}</ReactMarkdown></div>
@@ -1048,7 +1034,7 @@ export default function App() {
           <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} md:block`}>
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
               <FileText className="w-4 h-4" />
-              Planning & PDF
+              Planning
             </h2>
 
             {!s.selectedHotel ? (
@@ -1075,45 +1061,6 @@ export default function App() {
                     )}
                   </button>
                 </div>
-
-                {s.itinerary && (
-                  <div>
-                    <h3 className="text-xs font-medium text-gray-600 mb-1">PDF</h3>
-                    <button
-                      onClick={handleGeneratePDF}
-                      disabled={s.pdfLoading}
-                      className="btn btn-primary btn-sm w-full"
-                    >
-                      {s.pdfLoading ? (
-                        <span className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Generating…
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5">
-                          <FileText className="w-4 h-4" />
-                          Generate PDF
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                )}
-
-                {s.pdfUrl && (
-                  <div className="p-2.5 rounded-lg bg-green-50 border border-green-200">
-                    <p className="text-xs text-green-700 font-medium flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      PDF ready!
-                    </p>
-                    <a
-                      href={`${apiBase}${s.pdfUrl}`}
-                      target="_blank"
-                      className="text-xs text-brand-blue underline mt-0.5 inline-block"
-                    >
-                      Download Here
-                    </a>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -1132,37 +1079,17 @@ export default function App() {
                 </div>
                 <h3 className="text-lg font-semibold text-brand-blue mb-1">Generate Your Weekend Plan</h3>
                 <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
-                  Once you have a hotel and restaurant selections, generate a full weekend itinerary — then export it as a polished PDF brochure.
+                  Once you have a hotel and restaurant selections, generate a full weekend itinerary.
                 </p>
               </div>
             ) : (
               <div className="panel p-4">
                 <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
                   <Sun className="w-4 h-4" />
-                  Weekend Planning — {s.city}
+                  Weekend Planning — {cap(s.city)}
                 </h2>
                 <div className="scroll-content pr-1">
                   <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.itinerary}</ReactMarkdown></div>
-                </div>
-              </div>
-            )}
-
-            {/* Planned journey */}
-            {s.planOut && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="panel p-3">
-                  <h3 className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
-                    <ChevronRight className="w-3.5 h-3.5 text-brand-blue" />
-                    Way Out
-                  </h3>
-                  <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.planOut.markdown}</ReactMarkdown></div>
-                </div>
-                <div className="panel p-3">
-                  <h3 className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
-                    <ChevronDown className="w-3.5 h-3.5 text-brand-blue" />
-                    Way Home
-                  </h3>
-                  <div className="markdown text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.planHome?.markdown || ""}</ReactMarkdown></div>
                 </div>
               </div>
             )}

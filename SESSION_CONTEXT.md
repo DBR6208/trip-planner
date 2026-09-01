@@ -53,6 +53,7 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 | 13 | Typo "depating" → "departing" | PENDING — verify not in new code |
 | 14 | Planner rewrite with actual weekend pattern | DONE — planner.py has full Friday/Saturday/Sunday pattern |
 | 15 | Layout: TOC depth 2, no widows, no emoji, no italic | DONE — nowidow package, emoji strip, tocdepth=2 |
+## Session discipline
 
 ## Recent work (2026-08-28)
 
@@ -76,6 +77,11 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 
 ## Recent work (2026-08-31)
 
+### Fix: route summary removed from Planning tab
+- The "Way Out" / "Way Home" planned-journey boxes were duplicated from the Route tab into the Planning tab output area
+- Removed the `{s.planOut && (...)}` section from tab 4 (Planning) — the route plan now only appears in the Route tab where it belongs
+- Build verified clean
+
 ### Hotel map — BeautifyIcon markers + parking overlay
 - Switched from plain `CircleMarker` to **BeautifyIcon** (`fa-hotel` at 12px, circle shape) — larger, styled, matches the Gradio notebook approach
 - Added **parking markers**: blue (`#1565C0`) `fa-parking` circle markers when a hotel is selected, fetched server-side in `/api/hotels/map`
@@ -90,6 +96,8 @@ GitHub: https://github.com/DBR6208/trip-planner (private)
 - **Restaurant search:** also clears stale data on search, shows spinner in the output area
 
 ### Restaurants tab — cuisine-colored map
+
+### Hotels tab revisited — parking markers
 - Added `generate_restaurant_map()` to `backend/services/restaurants.py` — Folium map with hotel marker (BeautifyIcon fa-hotel) + restaurant markers (BeautifyIcon **fa-utensils**, colored by cuisine)
 - Colors: Local=`#2E7D32`, Italian=`#C62828`, Croatian=`#1565C0`, Grill=`#E65100`, Steakhouse=`#6A1B9A`, Seafood=`#00838F`
 - Default cuisines changed from all 6 pre-selected to **empty** — when empty the backend searches all 6 cuisines
