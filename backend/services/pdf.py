@@ -198,14 +198,12 @@ citytitle: "{city} Weekend Travel Guide"
                 shutil.copy(map_png, map_out_path)
                 map_markdown = (
                     "\n\n## Map\n\n"
-                    "\\begin{figure}[htbp]\n"
-                    "\\centering\n"
-                    "\\includegraphics[width=0.85\\textwidth]{" + map_out_path + "}\n"
-                    "\\caption{Restaurant locations.}\n"
-                    "\\end{figure}"
-                )
-
-        # Hotel photo: download into tmpdir
+                    + r"\begin{figure}[htbp]" + "\n"
+                    + r"\centering" + "\n"
+                    + r"\includegraphics[width=0.85\textwidth]{" + map_out_path + "}\n"
+                    + r"\caption{Restaurant locations.}" + "\n"
+                    + r"\end{figure}"
+                )# Hotel photo: download into tmpdir
         hotel_photo_md = ""
         if hotel_photo_url:
             try:
@@ -221,9 +219,10 @@ citytitle: "{city} Weekend Travel Guide"
                     hotel_out_path = os.path.join(guides_dir, hotel_out_name)
                     shutil.copy(hotel_img_local, hotel_out_path)
                     hotel_photo_md = (
-                        "\n\n\\begin{center}\n"
-                        "\\includegraphics[width=0.7\\textwidth]{" + hotel_out_path + "}\n"
-                        "\\end{center}"
+                        "\n\n"
+                        + r"\begin{center}" + "\n"
+                        + r"\includegraphics[width=0.7\textwidth]{" + hotel_out_path + "}\n"
+                        + r"\end{center}"
                     )
             except Exception as e:
                 print(f"Hotel photo download failed: {e}")
