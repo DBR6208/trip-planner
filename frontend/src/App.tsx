@@ -463,12 +463,8 @@ export default function App() {
           <div className="space-y-4">
             {!s.guideData ? (
               <div className="panel p-8 text-center">
-                {/* Map pin SVG */}
-                <svg className="w-16 h-16 mx-auto mb-4 text-brand-blue/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="currentColor" fillOpacity="0.08"/>
-                  <circle cx="12" cy="9" r="2.5" fill="currentColor" fillOpacity="0.2"/>
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-                </svg>
+                {/* Compass icon */}
+                <Compass className="w-16 h-16 mx-auto mb-4 text-brand-blue/30" />
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <div className="h-px w-12 bg-brand-gold/40" />
                   <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Start Here</span>
@@ -646,9 +642,7 @@ export default function App() {
             )}
             {!s.selectedHotel ? (
               <div className="panel p-8 text-center">
-                <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z"/>
-                </svg>
+                <HotelIcon className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" />
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <div className="h-px w-8 bg-brand-gold/40" />
                   <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 2</span>
@@ -779,9 +773,7 @@ export default function App() {
             )}
             {!s.restaurantFormatted ? (
               <div className="panel p-8 text-center">
-                <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.871c1.355 0 2.697.056 4.024.166C17.155 8.51 18 9.473 18 10.608v2.513M15 18.75A3.75 3.75 0 0018 15v-1.394c0-1.297-1.013-2.358-2.302-2.394a43.425 43.425 0 00-7.396 0C7.013 11.248 6 12.309 6 13.606V15a3.75 3.75 0 003 3.75m0 0v2.25m0-2.25h6m-6 0H9"/>
-                </svg>
+                <Utensils className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" />
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <div className="h-px w-8 bg-brand-gold/40" />
                   <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 3</span>
@@ -1013,9 +1005,7 @@ export default function App() {
           <div className="space-y-4">
             {!s.routeMap ? (
               <div className="panel p-8 text-center">
-                <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z"/>
-                </svg>
+                <Car className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" />
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <div className="h-px w-8 bg-brand-gold/40" />
                   <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 4</span>
@@ -1112,9 +1102,7 @@ export default function App() {
           <div className="space-y-4">
             {!s.itinerary ? (
               <div className="panel p-8 text-center">
-                <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
-                </svg>
+                <Calendar className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" />
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <div className="h-px w-8 bg-brand-gold/40" />
                   <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 5</span>
@@ -1257,9 +1245,7 @@ export default function App() {
           <div className="space-y-4">
             {!s.itinerary ? (
               <div className="panel p-8 text-center">
-                <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M2.25 15.75l5.25-4.75L12 13.5l4.5-4.25 5.25 4.75V6.75l-9.75 7.5-5.25-4.5-5.25 4.5v1.5z"/>
-                </svg>
+                <FileText className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" />
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <div className="h-px w-8 bg-brand-gold/40" />
                   <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 6</span>
@@ -1304,9 +1290,7 @@ export default function App() {
               </>
             ) : (
               <div className="panel p-8 text-center">
-                <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M2.25 15.75l5.25-4.75L12 13.5l4.5-4.25 5.25 4.75V6.75l-9.75 7.5-5.25-4.5-5.25 4.5v1.5z"/>
-                </svg>
+                <FileText className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" />
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <div className="h-px w-8 bg-brand-gold/40" />
                   <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 6</span>
