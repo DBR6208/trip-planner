@@ -71,4 +71,10 @@ export const api = {
 
   generatePDF: (req: import("../types/api").PDFReq) =>
     request<import("../types/api").PDFRes>("/api/pdf", req),
+
+  coverImages: (city: string, tourist_office_website?: string) =>
+    request<import("../types/api").CoverImagesRes>("/api/cover-images", {
+      city,
+      tourist_office_website,
+    }),
 };

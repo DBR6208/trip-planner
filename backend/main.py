@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .config import HOME_ADDRESS, OUTPUT_DIR
 from .services import (
     city_guide as guide_svc,
+    cover_images as cover_svc,
     geo,
     hotels as hotel_svc,
     restaurants as restaurant_svc,
@@ -133,6 +134,22 @@ class PDFRequest(BaseModel):
     journey_home: str
     planner: str
     cover_image: str | None = None
+
+
+class CoverImagesRequest(BaseModel):
+    city: str
+    tourist_office_website: str | None = None
+
+
+class CoverImageInfo(BaseModel):
+    url: str
+    thumb: str
+    source: str
+    title: str
+
+
+class CoverImagesResponse(BaseModel):
+    images: list[CoverImageInfo]
 
 
 # ── Endpoints ──
@@ -304,6 +321,16 @@ def get_planner(req: PlannerRequest):
             req.restaurant_list, req.search_context,
         )
         return {"itinerary": itinerary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/cover-images", response_model=CoverImagesResponse)
+def get_cover_images(req: CoverImagesRequest):
+    """Search for candidate cover images for a city."""
+    try:
+        images = cover_svc.fetch_cover_images(req.city, req.tourist_office_website)
+        return CoverImagesResponse(images=images)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

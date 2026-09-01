@@ -6,10 +6,66 @@ import shutil
 import tempfile
 from datetime import datetime
 
+import httpx
 import pypandoc
 
 from .. import config
+from . import cover_images as cover_svc
 from . import geo
+
+
+def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
+    """Legacy fallback: auto-fetch a Wikimedia image. Uses cover_images module."""
+    search_terms = [
+        f"{city} city skyline",
+        f"{city} cityscape landmark",
+        f"{city} cathedral aerial",
+    ]
+    for query in search_terms:
+        try:
+            params = {
+                "action": "query",
+                "list": "search",
+                "srsearch": query,
+                "srnamespace": "6",  # File namespace
+                "format": "json",
+                "srlimit": 5,
+                "srqiprofile": "classic",
+            }
+            r = httpx.get(
+                "https://commons.wikimedia.org/w/api.php",
+                params=params,
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            pages = data.get("query", {}).get("search", [])
+            if not pages:
+                continue
+
+            for page in pages:
+                title = page.get("title", "")
+                if not title or "icon" in title.lower():
+                    continue
+                # File:Some_City_Skyline.jpg -> Some_City_Skyline.jpg
+                filename = title.replace("File:", "", 1).replace(" ", "_")
+                file_url = f"https://commons.wikimedia.org/wiki/Special:FilePath/{filename}"
+                # Follow redirects to get the actual image
+                img_resp = httpx.get(file_url, follow_redirects=True, timeout=15)
+                if img_resp.status_code != 200:
+                    continue
+                content_type = img_resp.headers.get("content-type", "")
+                if not content_type.startswith("image/"):
+                    continue
+                ext = os.path.splitext(filename)[1] or ".jpg"
+                dest = os.path.join(save_dir, f"cover_city{ext}")
+                with open(dest, "wb") as f:
+                    f.write(img_resp.content)
+                return dest
+        except Exception as e:
+            print(f"Wikimedia search for '{query}' failed: {e}")
+            continue
+    return None
 
 
 def build_markdown(data: dict) -> str:
@@ -64,7 +120,8 @@ def generate_pdf(
 ) -> str:
     """Convert markdown to PDF using pandoc + LaTeX template.
 
-    Returns path to generated PDF file.
+    If no cover_image_path is given, auto-fetches a city photo from
+    Wikimedia Commons. Returns path to generated PDF file.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_pdf = os.path.join(
@@ -77,6 +134,7 @@ def generate_pdf(
 title: "Weekend Guide {city} {country}"
 date: "{date_str}"
 ---
+
 
 """
 
@@ -99,10 +157,24 @@ date: "{date_str}"
             "--wrap=none",
         ]
 
-        if cover_image_path and os.path.exists(cover_image_path):
-            img_ext = os.path.splitext(cover_image_path)[1]
+        # Auto-fetch cover image if none was provided or the path doesn't exist
+        cover_path = cover_image_path
+        if cover_path and (cover_path.startswith("http://") or cover_path.startswith("https://")):
+            # URL from frontend selection — download it
+            downloaded = cover_svc.download_image(cover_path, tmpdir)
+            if downloaded:
+                cover_path = downloaded
+            else:
+                cover_path = None
+        if not cover_path or not os.path.exists(cover_path):
+            fetched = _fetch_city_cover_image(city, tmpdir)
+            if fetched:
+                cover_path = fetched
+
+        if cover_path and os.path.exists(cover_path):
+            img_ext = os.path.splitext(cover_path)[1]
             img_dest = os.path.join(tmpdir, f"cover_image{img_ext}")
-            shutil.copy(cover_image_path, img_dest)
+            shutil.copy(cover_path, img_dest)
             extra_args.append(f"--variable=cover-image:{img_dest}")
 
         pypandoc.convert_file(
@@ -131,7 +203,7 @@ def _html_links_to_md(html_text: str) -> str:
         label = re.sub(r"<[^>]+>", "", m.group(2)).strip()
         return f"[{label}]({url})"
     return re.sub(
-        r'<a\s+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+        r'<a\s+href=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</a>',
         repl, html_text, flags=re.IGNORECASE | re.DOTALL,
     )
 

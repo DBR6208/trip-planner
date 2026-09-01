@@ -23,6 +23,7 @@ import {
   Download,
   Calendar,
   Sun,
+  Image,
 } from "lucide-react";
 import "./index.css";
 
@@ -95,6 +96,9 @@ interface FullState {
   itineraryLoading: boolean;
   pdfUrl: string;
   pdfLoading: boolean;
+  coverImages: import("./types/api").CoverImageInfo[];
+  coverImagesLoading: boolean;
+  selectedCoverImage: import("./types/api").CoverImageInfo | null;
   error: string;
   showGuide: boolean;
 }
@@ -155,6 +159,9 @@ export default function App() {
     itineraryLoading: false,
     pdfUrl: "",
     pdfLoading: false,
+    coverImages: [],
+    coverImagesLoading: false,
+    selectedCoverImage: null,
     error: "",
     showGuide: false,
   });
@@ -315,6 +322,44 @@ export default function App() {
       update("itinerary", data.itinerary);
     } catch (e) { showError(e); }
     finally { update("itineraryLoading", false); }
+  };
+
+  const handleFindCoverImages = async () => {
+    if (!s.city.trim()) return;
+    update("coverImagesLoading", true);
+    update("coverImages", []);
+    update("selectedCoverImage", null);
+    update("error", "");
+    try {
+      const data = await api.coverImages(
+        s.city,
+        s.guideData?.tourist_office_data?.website ?? undefined,
+      );
+      update("coverImages", data.images);
+    } catch (e) { showError(e); }
+    finally { update("coverImagesLoading", false); }
+  };
+
+  const handleGeneratePDF = async () => {
+    if (!s.guideData || !s.selectedHotel) return;
+    update("pdfLoading", true);
+    update("error", "");
+    try {
+      const data = await api.generatePDF({
+        city: s.city,
+        country: s.country || "Germany",
+        city_guide: s.guideData.city_guide,
+        tourist_office: s.guideData.tourist_office,
+        hotel: s.hotelFormatted,
+        restaurants: s.restaurantFormatted,
+        journey_out: s.planOut?.markdown || "",
+        journey_home: s.planHome?.markdown || "",
+        planner: s.itinerary,
+        cover_image: s.selectedCoverImage?.url,
+      });
+      update("pdfUrl", data.download_url);
+    } catch (e) { showError(e); }
+    finally { update("pdfLoading", false); }
   };
 
   // ── Render ──
@@ -1091,6 +1136,190 @@ export default function App() {
                 <div className="scroll-content pr-1">
                   <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.itinerary}</ReactMarkdown></div>
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ TAB 5: BROCHURE ════════════════ */}
+      {tab === 5 && (
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-5">
+          {/* Sidebar */}
+          <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} md:block`}>
+            <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
+              <FileText className="w-4 h-4" />
+              Brochure Cover
+            </h2>
+
+            {!s.itinerary ? (
+              <p className="text-xs text-gray-400">Generate a weekend itinerary first in the Planning tab.</p>
+            ) : (
+              <div className="space-y-3">
+                <button
+                  onClick={handleFindCoverImages}
+                  disabled={s.coverImagesLoading}
+                  className="btn btn-primary btn-sm w-full"
+                >
+                  {s.coverImagesLoading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Searching…
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <Image className="w-4 h-4" />
+                      Find Cover Images
+                    </span>
+                  )}
+                </button>
+
+                {/* Thumbnail gallery */}
+                {s.coverImages.length > 0 && (
+                  <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-1">
+                    <p className="text-xs font-medium text-gray-600 mb-1">
+                      {s.coverImages.length} images found — click to select
+                    </p>
+                    {s.coverImages.map((img, i) => (
+                      <div
+                        key={i}
+                        onClick={() => update("selectedCoverImage", img)}
+                        className={`flex items-start gap-2 p-1.5 rounded-lg border cursor-pointer transition-all ${
+                          s.selectedCoverImage?.url === img.url
+                            ? "border-brand-blue bg-blue-50/60 ring-1 ring-brand-blue"
+                            : "border-base-300 hover:border-gray-400"
+                        }`}
+                      >
+                        <div className="w-16 h-12 flex-shrink-0 rounded overflow-hidden bg-gray-100">
+                          <img
+                            src={img.thumb}
+                            alt={img.title}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                              (e.target as HTMLImageElement).parentElement!.classList.add("flex", "items-center", "justify-center", "text-xs", "text-gray-400");
+                              (e.target as HTMLImageElement).parentElement!.innerText = "N/A";
+                            }}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-gray-700 truncate">{img.title}</div>
+                          <div className="text-[11px] text-gray-400 truncate">{img.source}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!s.coverImagesLoading && s.coverImages.length === 0 && (
+                  <p className="text-xs text-gray-400">Click "Find Cover Images" to search for city photos.</p>
+                )}
+
+                {s.selectedCoverImage && (
+                  <>
+                    <hr className="border-base-300 my-1" />
+                    <button
+                      onClick={handleGeneratePDF}
+                      disabled={s.pdfLoading}
+                      className="btn btn-primary btn-sm w-full"
+                    >
+                      {s.pdfLoading ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating PDF…
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <FileText className="w-4 h-4" />
+                          Generate PDF
+                        </span>
+                      )}
+                    </button>
+                  </>
+                )}
+
+                {s.pdfUrl && (
+                  <div className="p-2.5 rounded-lg bg-green-50 border border-green-200">
+                    <p className="text-xs text-green-700 font-medium flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      PDF ready!
+                    </p>
+                    <a
+                      href={`${apiBase}${s.pdfUrl}`}
+                      target="_blank"
+                      className="text-xs text-brand-blue underline mt-0.5 inline-block"
+                    >
+                      Download Here
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Output */}
+          <div className="space-y-4">
+            {!s.itinerary ? (
+              <div className="panel p-8 text-center">
+                <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M2.25 15.75l5.25-4.75L12 13.5l4.5-4.25 5.25 4.75V6.75l-9.75 7.5-5.25-4.5-5.25 4.5v1.5z"/>
+                </svg>
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <div className="h-px w-8 bg-brand-gold/40" />
+                  <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 6</span>
+                  <div className="h-px w-8 bg-brand-gold/40" />
+                </div>
+                <h3 className="text-lg font-semibold text-brand-blue mb-1">Create Your Brochure</h3>
+                <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
+                  Generate a weekend itinerary first, then pick a cover image and export as a polished PDF brochure.
+                </p>
+              </div>
+            ) : s.selectedCoverImage ? (
+              <>
+                {!s.pdfUrl && (
+                  <div className="panel p-4 text-center">
+                    <p className="text-sm text-gray-500">Cover image selected. Click <strong>Generate PDF</strong> in the sidebar.</p>
+                  </div>
+                )}
+                {s.pdfUrl && (
+                  <div className="panel p-4">
+                    <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4" />
+                      Brochure — {cap(s.city)}
+                    </h2>
+                    <div className="rounded-lg overflow-hidden border border-gray-200">
+                      <iframe
+                        src={`${apiBase}${s.pdfUrl}`}
+                        title="PDF Preview"
+                        className="w-full"
+                        style={{ height: "600px", border: "none" }}
+                      />
+                    </div>
+                    <a
+                      href={`${apiBase}${s.pdfUrl}`}
+                      className="btn btn-primary btn-sm mt-3 gap-1.5"
+                      target="_blank"
+                    >
+                      <Download className="w-4 h-4" />
+                      Download PDF
+                    </a>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="panel p-8 text-center">
+                <svg className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M2.25 15.75l5.25-4.75L12 13.5l4.5-4.25 5.25 4.75V6.75l-9.75 7.5-5.25-4.5-5.25 4.5v1.5z"/>
+                </svg>
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <div className="h-px w-8 bg-brand-gold/40" />
+                  <span className="text-xs font-medium text-brand-gold uppercase tracking-widest">Step 6</span>
+                  <div className="h-px w-8 bg-brand-gold/40" />
+                </div>
+                <h3 className="text-lg font-semibold text-brand-blue mb-1">Select a Cover Image</h3>
+                <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
+                  Use the sidebar to search for representative city photos. Click one to select it, then generate your PDF brochure.
+                </p>
               </div>
             )}
           </div>

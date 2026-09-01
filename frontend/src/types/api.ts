@@ -159,6 +159,17 @@ export interface PDFRes {
   download_url: string;
 }
 
+export interface CoverImageInfo {
+  url: string;
+  thumb: string;
+  source: string;
+  title: string;
+}
+
+export interface CoverImagesRes {
+  images: CoverImageInfo[];
+}
+
 export const ALLOWED_CUISINES = [
   "Local",
   "Italian",
