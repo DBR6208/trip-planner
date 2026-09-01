@@ -363,12 +363,19 @@ export default function App() {
   // ── Render ──
   return (
     <div className="gradio-container">
-      {/* ── Header — big centered title like Gradio's gr.Markdown("<h1>") ── */}
+      {/* ── Header ── */}
       <header className="mb-1 text-center">
-        <img src="/logo.svg" alt="DBG Travel" className="h-14 mx-auto mb-1" />
-        <p className="text-xs text-gray-500 mt-1">
-          DBG Travel · Weekend Travel Guide Generator
-        </p>
+        <div className="flex items-center justify-center gap-4 mb-1">
+          <img src="/logo.svg" alt="DBG Travel" className="h-16 w-16 flex-shrink-0" />
+          <div className="text-left">
+            <h1 className="text-2xl font-bold text-brand-blue tracking-tight leading-none">
+              DBG TRAVEL
+            </h1>
+            <p className="text-xs text-gray-500 mt-1">
+              Weekend Travel Guide Generator
+            </p>
+          </div>
+        </div>
         {s.pdfUrl && (
           <a
             href={`${apiBase}${s.pdfUrl}`}
