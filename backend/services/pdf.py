@@ -221,19 +221,19 @@ citytitle: "{city} Weekend Travel Guide"
                     hotel_photo_md = (
                         "\n\n"
                         + r"\begin{center}" + "\n"
-                        + r"\includegraphics[width=0.7\textwidth]{" + hotel_out_path + "}\n"
+                        + r"\includegraphics[width=0.7\textwidth]{" + hotel_out_path + "}" + "\n"
                         + r"\end{center}"
                     )
+                    print(f"Hotel photo saved: {hotel_out_path} ({len(resp.content)} bytes)")
             except Exception as e:
-                print(f"Hotel photo download failed: {e}")
+                print(f"WARNING: Hotel photo download failed: {e} — skipping hotel photo in PDF")
 
         # Build the markdown file in tmpdir
         if map_markdown:
             full_md = full_md.rstrip() + map_markdown
         if hotel_photo_md:
-            # Insert after Google Maps line — use str.replace to avoid re interpreting backslashes
-            marker = "]\n\n**Overview**" if "**Overview**" in full_md else "]\n\n"
-            full_md = full_md.replace(marker, "]\n\n" + hotel_photo_md + "\n\n", 1)
+            # Insert photo before **Overview** heading in Hotel section
+            full_md = full_md.replace("**Overview**", hotel_photo_md + "\n\n**Overview**", 1)
 
         md_file = os.path.join(tmpdir, "guide.md")
         with open(md_file, "w", encoding="utf-8") as f:
