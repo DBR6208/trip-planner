@@ -313,7 +313,7 @@ def _plan_leg(waypoints_raw, start_battery, color_cycle, direction):
 
         if i < len(waypoints) - 2:
             battery = config.CHARGE_UP_TO_PERCENT
-            charging_list.append(f"- **{ordered[i][0].split(' - ')[0]}** \u2014 {ordered[i][0].split(' - ', 1)[-1]}")
+            charging_list.append(f"**{ordered[i][0].split(' - ')[0]}** \u2014 {ordered[i][0].split(' - ', 1)[-1]}")
         else:
             final_arrival = arrival
             folium.Marker(
@@ -328,16 +328,17 @@ def _plan_leg(waypoints_raw, start_battery, color_cycle, direction):
 
     # Build markdown
     heading = ""
-    table = "| Leg | From \u2192 To | Distance | Arrival Battery |\n"
+    table = "| Leg | From → To | Distance | Arrival Battery |\n"
     table += "|-----|-----------|----------|-----------------|\n"
     table += "\n".join(leg_rows)
 
     charging_md = ""
     if charging_list:
-        charging_md = "\n\n**Charging stations used:**\n" + "\n".join(charging_list)
+        # No dash prefix, items start on a new line after the heading
+        charging_md = "\n\n**Charging stations used:**\n\n" + "\n".join(charging_list)
 
     summary = (
-        f"\n\n**Trip summary:** {total_dist:.1f} km | "
+        f"\n\n**Trip summary:**\n\n{total_dist:.1f} km | "
         f"{geo.format_time_hm(total_hours)} "
         f"({geo.format_time_hm(total_drive)} driving + {geo.format_time_hm(charge_hours)} charging) | "
         f"Arrival battery: {final_arrival:.1f}%"

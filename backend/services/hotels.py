@@ -159,13 +159,14 @@ def format_hotel(hotel: dict, description: str, parkings: list[dict] | None = No
     """Format hotel as markdown with bold name + structured list + description + parking.
 
     **Hotel Name**
+
     - *Address:* ...
     - *Website:* [name](url)
     - *Google Maps:* [View on Map](url)
 
     Description paragraph.
 
-    Parking in hotel not guaranteed. These indoor parking garages are nearby:
+    Nearby indoor parking garages:
     - **Garage Name** — Address — [View on Map](url)
     ...
     """
@@ -178,23 +179,23 @@ def format_hotel(hotel: dict, description: str, parkings: list[dict] | None = No
         lines.append(f"- *Google Maps:* [View on Map]({maps_url})")
     lines.append(f"\n{description}")
 
-    # Parking — bullet list with Google Maps links
+    # Parking — proper bullet list with blank line before list
     if parkings:
-        lines.append("\nNearby indoor parking garages:")
+        lines.append("\n**Nearby indoor parking garages:**  \n")
         for p in parkings:
             pmaps = geo.generate_maps_url(p.get("place_id", ""), "parking")
             name = p.get("name", "")
             addr = p.get("address", "")
             if pmaps:
                 lines.append(
-                    f"  - **{name}** — {addr} — "
+                    f"- **{name}** — {addr} — "
                     f"[Google Maps]({pmaps})"
                 )
             else:
-                lines.append(f"  - **{name}** — {addr}")
+                lines.append(f"- **{name}** — {addr}")
     else:
         lines.append(
-            "\nNo nearby indoor parking garages within walking distance."
+            "\n*No nearby indoor parking garages within walking distance.*"
         )
 
     return "\n".join(lines)

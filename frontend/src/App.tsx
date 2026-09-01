@@ -354,6 +354,8 @@ export default function App() {
         journey_home: s.planHome?.markdown || "",
         planner: s.itinerary,
         cover_image: s.selectedCoverImage?.url,
+        restaurant_map_html: s.restaurantMapHtml || undefined,
+        hotel_photo_url: s.selectedHotel?.photo_url || undefined,
       });
       update("pdfUrl", data.download_url);
     } catch (e) { showError(e); }
@@ -376,16 +378,6 @@ export default function App() {
             </p>
           </div>
         </div>
-        {s.pdfUrl && (
-          <a
-            href={`${apiBase}${s.pdfUrl}`}
-            className="btn btn-primary btn-sm gap-1.5 mt-2"
-            target="_blank"
-          >
-            <Download className="w-4 h-4" />
-            Download PDF
-          </a>
-        )}
       </header>
 
       {/* ── Tab Bar — Gradio Tabs ── */}
@@ -1236,9 +1228,10 @@ export default function App() {
                     <a
                       href={`${apiBase}${s.pdfUrl}`}
                       target="_blank"
-                      className="text-xs text-brand-blue underline mt-0.5 inline-block"
+                      className="btn btn-primary btn-sm w-full mt-2 gap-1.5"
                     >
-                      Download Here
+                      <Download className="w-4 h-4" />
+                      Download PDF
                     </a>
                   </div>
                 )}
@@ -1284,23 +1277,6 @@ export default function App() {
                     <p className="text-xs text-gray-500 mt-2">
                       {s.selectedCoverImage.title} &middot; {s.selectedCoverImage.source}
                     </p>
-                    <button
-                      onClick={handleGeneratePDF}
-                      disabled={s.pdfLoading}
-                      className="btn btn-primary btn-sm mt-3"
-                    >
-                      {s.pdfLoading ? (
-                        <span className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Generating PDF…
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5">
-                          <FileText className="w-4 h-4" />
-                          Generate PDF
-                        </span>
-                      )}
-                    </button>
                   </div>
                 )}
                 {s.pdfUrl && (
@@ -1317,14 +1293,6 @@ export default function App() {
                         style={{ height: "600px", border: "none" }}
                       />
                     </div>
-                    <a
-                      href={`${apiBase}${s.pdfUrl}`}
-                      className="btn btn-primary btn-sm mt-3 gap-1.5"
-                      target="_blank"
-                    >
-                      <Download className="w-4 h-4" />
-                      Download PDF
-                    </a>
                   </div>
                 )}
               </>
@@ -1349,7 +1317,7 @@ export default function App() {
       {/* ── Footer ── */}
       <footer className="mt-10 text-center pb-6">
         <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
-          <img src="/logo.svg" alt="DBG Travel" className="h-5 w-5 opacity-40" />
+          <img src="/logo.svg" alt="DBG Travel" className="h-5 w-5 opacity-60" />
           <span>&copy; DBG Travel 2026</span>
         </div>
       </footer>

@@ -66,6 +66,11 @@ CHARGING_STATIONS_FILE = os.path.join(
 
 # PDF output
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "brochures")
+WEEKEND_GUIDES_DIR = os.path.join(os.path.dirname(__file__), "..", "Weekend_Guides")
+
+# Map screenshot dimensions for PDF inclusion
+MAP_SCREENSHOT_WIDTH = 800
+MAP_SCREENSHOT_HEIGHT = 600
 
 # Charging stop recommendation
 TARGET_ARRIVAL_BATTERY = 60.0  # target % when arriving at a charging stop or destination

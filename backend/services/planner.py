@@ -35,7 +35,7 @@ RESTAURANT LIST:
 
 IMPORTANT GUIDELINES:
 - Use time-of-day blocks (morning, afternoon, evening), not clock times. Example: "late afternoon" / "mid-evening" / "early afternoon" — not "5:00 PM" or "6:30 PM".
-- For each evening, recommend 2-3 specific restaurants from the list above. For each, mention the **name**, the cuisine type, the walk time from the hotel, and the rating.
+- For each evening, recommend 2-3 specific restaurants from the list above. Format them as a proper markdown bullet list (each entry on its own line starting with `-`). Do NOT list them inline in a running sentence.
 - If the walk to any restaurant or attraction exceeds 20 minutes, or if the weather is bad, suggest taking a taxi.
 - The tone should be relaxed, practical, and richly descriptive — describe the atmosphere and character of the places visited.
 - Bold only: restaurant names, hotel name, attraction names, and key numbers. No italic, no emoji, no filler phrases.
@@ -52,7 +52,10 @@ IMPORTANT GUIDELINES:
 Describe the arrival experience at the hotel around 5-6 PM in a relaxed tone. Refresh, then:
 - Start with a pre-dinner drink at the hotel bar to unwind and discuss the evening options. Describe the atmosphere.
 - Take a short relaxed walk (up to ~20 minutes) to get a first impression of the city at night — a key landmark, lively square, or charming street. Name the specific landmark or neighborhood. Mention the walking route.
-- For dinner, list 2-3 specific restaurants from the RESTAURANT LIST above. For each, write a short description: name in bold, cuisine type, walk time from hotel, rating. Recommend one as the top choice and explain why (e.g. atmosphere, cuisine style, ratings).
+- For dinner, list 2-3 specific restaurants from the RESTAURANT LIST above. Format them as a proper markdown bullet list with each entry on its own line. For each, write: **name** (cuisine type) — short description, walk time from hotel, rating. Recommend one as the top choice and explain why. Example:
+
+  - **Restaurant Name** (cuisine) — short description of food and ambiance, X min walk, rated 4.X
+
 - After dinner, return to the hotel for a nightcap and a game of UNO or cards before sleeping.
 - If any walk exceeds 20 minutes or the weather is bad, suggest taking a taxi.
 
@@ -70,7 +73,10 @@ Make this section rich and detailed with specific suggestions drawn from the cit
 In the evening (after returning to the hotel):
 - Start with a pre-dinner drink at the hotel bar.
 - Take a short relaxed walk — suggest a different route or neighborhood than the daytime walk.
-- For dinner, list 2-3 specific restaurants from the RESTAURANT LIST (different from Friday's choices). For each, write a short description: name in bold, cuisine type, walk time from hotel, rating. Recommend one as the top choice.
+- For dinner, list 2-3 specific restaurants from the RESTAURANT LIST (different from Friday's choices). Format them as a proper markdown bullet list with each entry on its own line. For each, write: **name** (cuisine type) — short description, walk time from hotel, rating. Recommend one as the top choice. Example:
+
+  - **Restaurant Name** (cuisine) — short description of food and ambiance, X min walk, rated 4.X
+
 - After dinner, return to the hotel for a nightcap and UNO or cards.
 - If any walk exceeds 20 minutes or weather is bad, suggest a taxi.
 

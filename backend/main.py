@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config import HOME_ADDRESS, OUTPUT_DIR
+from .config import HOME_ADDRESS, OUTPUT_DIR, WEEKEND_GUIDES_DIR
 from .services import (
     city_guide as guide_svc,
     cover_images as cover_svc,
@@ -138,6 +138,8 @@ class PDFRequest(BaseModel):
     journey_home: str
     planner: str
     cover_image: str | None = None
+    restaurant_map_html: str | None = None
+    hotel_photo_url: str | None = None
 
 
 class CoverImagesRequest(BaseModel):
@@ -355,6 +357,8 @@ def generate_pdf(req: PDFRequest):
         md = pdf_svc.build_markdown(data)
         pdf_path = pdf_svc.generate_pdf(
             md, req.city, req.country, req.cover_image,
+            restaurant_map_html=req.restaurant_map_html,
+            hotel_photo_url=req.hotel_photo_url,
         )
         return {"pdf_path": pdf_path, "download_url": f"/api/pdf/download/{os.path.basename(pdf_path)}"}
     except Exception as e:
@@ -363,9 +367,15 @@ def generate_pdf(req: PDFRequest):
 
 @app.get("/api/pdf/download/{filename}")
 def download_pdf(filename: str):
-    """Download a generated PDF."""
-    filepath = os.path.join(OUTPUT_DIR, filename)
-    if not os.path.exists(filepath):
+    """Download a generated PDF from Weekend_Guides or brochures."""
+    # Check Weekend_Guides first, then fall back to brochures
+    guides_path = os.path.join(WEEKEND_GUIDES_DIR, filename)
+    brochures_path = os.path.join(OUTPUT_DIR, filename)
+    if os.path.exists(guides_path):
+        filepath = guides_path
+    elif os.path.exists(brochures_path):
+        filepath = brochures_path
+    else:
         raise HTTPException(status_code=404, detail="PDF not found")
     return FileResponse(filepath, media_type="application/pdf", filename=filename)
 

@@ -70,6 +70,55 @@ def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
     return None
 
 
+def _screenshot_map_html(html_content: str, save_dir: str, filename: str = "map_restaurants.png") -> str | None:
+    """Render a Folium HTML map to a PNG screenshot using headless Firefox + Selenium.
+
+    Returns the path to the saved PNG, or None on failure.
+    """
+    if not html_content or not html_content.strip():
+        return None
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.firefox.options import Options
+        from selenium.webdriver.firefox.service import Service
+
+        opts = Options()
+        opts.add_argument("--headless")
+        opts.set_preference("layout.css.devPixelsPerPx", "1")
+        service = Service("/snap/bin/geckodriver")
+
+        driver = webdriver.Firefox(
+            service=service,
+            options=opts,
+        )
+        try:
+            import urllib.parse
+            # Inject viewport meta for consistent sizing
+            full_html = html_content.replace(
+                "</head>",
+                '<meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>',
+                1,
+            ) if "</head>" in html_content else html_content
+            # Use data URI instead of file:// (Firefox blocks file:// in headless mode)
+            encoded = urllib.parse.quote(full_html)
+            data_uri = f"data:text/html,{encoded}"
+            driver.set_window_size(config.MAP_SCREENSHOT_WIDTH, config.MAP_SCREENSHOT_HEIGHT)
+            driver.get(data_uri)
+            import time
+            time.sleep(2)
+            png_path = os.path.join(save_dir, filename)
+            driver.save_screenshot(png_path)
+            return png_path if os.path.exists(png_path) else None
+        finally:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Map screenshot failed: {e}")
+        return None
+
+
 def build_markdown(data: dict) -> str:
     """Assemble all brochure sections into a single markdown document.
 
@@ -119,22 +168,36 @@ def generate_pdf(
     city: str,
     country: str,
     cover_image_path: str | None = None,
+    restaurant_map_html: str | None = None,
+    hotel_photo_url: str | None = None,
 ) -> str:
     """Convert markdown to PDF using pandoc + LaTeX template.
 
     If no cover_image_path is given, auto-fetches a city photo from
-    Wikimedia Commons. Returns path to generated PDF file.
+    Wikimedia Commons.  If restaurant_map_html is given, renders it as
+    a PNG and embeds it in the Planner section.
+
+    Returns path to generated PDF file.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Ensure Weekend_Guides directory exists
+    guides_dir = config.WEEKEND_GUIDES_DIR
+    os.makedirs(guides_dir, exist_ok=True)
+
+    # City-based filename
+    safe_city = re.sub(r"[^a-zA-Z0-9]+", "_", city).strip("_").lower()
+    safe_country = re.sub(r"[^a-zA-Z0-9]+", "_", country).strip("_").lower()
     output_pdf = os.path.join(
-        config.OUTPUT_DIR,
-        f"WeekendGuide_{city}_{country}_{timestamp}.pdf",
+        guides_dir,
+        f"weekend_guide_{safe_city}_{safe_country}_{timestamp}.pdf",
     )
 
     date_str = datetime.now().strftime("%B %d, %Y")
     yaml_header = f"""---
-title: "Weekend Guide {city} {country}"
+title: "{city} Weekend Travel Guide"
 date: "{date_str}"
+citytitle: "{city} Weekend Travel Guide"
 ---
 
 
@@ -143,9 +206,38 @@ date: "{date_str}"
     full_md = yaml_header + markdown_text
 
     template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "travel_template.tex")
+    logo_path = os.path.join(os.path.dirname(__file__), "..", "static", "logo.svg")
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        # Take restaurant map screenshot before building final markdown
+        restaurant_map_image_name = None
+        if restaurant_map_html:
+            map_png = _screenshot_map_html(restaurant_map_html, tmpdir, "map_restaurants.png")
+            if map_png:
+                restaurant_map_image_name = "map_restaurants.png"
+
         md_file = os.path.join(tmpdir, "guide.md")
+
+        # Build full markdown with map injection
+        if restaurant_map_image_name:
+            # Inject as ## subsection for correct section numbering (6.4)
+            map_markdown = "\n\n---\n\n## Restaurant Map\n\n![Restaurant locations](map_restaurants.png)"
+            full_md = full_md.rstrip() + map_markdown
+
+        # Inject hotel photo with constrained size (between address block and description)
+        if hotel_photo_url:
+            photo_html = (
+                f'\n<img src="{hotel_photo_url}" width="80%" alt="Hotel photo"/>\n'
+            )
+            # Insert after the Google Maps line in the Hotel section
+            full_md = re.sub(
+                r'(# Hotel\n+.*?\*Google Maps:.*?\])',
+                r'\1' + photo_html,
+                full_md,
+                count=1,
+                flags=re.DOTALL,
+            )
+
         with open(md_file, "w", encoding="utf-8") as f:
             f.write(full_md)
 
@@ -159,10 +251,22 @@ date: "{date_str}"
             "--wrap=none",
         ]
 
-        # Auto-fetch cover image if none was provided or the path doesn't exist
+        # Logo
+        if os.path.exists(logo_path):
+            # Convert SVG to PNG for LaTeX compatibility (SVG lacks BoundingBox)
+            try:
+                import cairosvg
+                logo_png = os.path.join(tmpdir, "logo.png")
+                cairosvg.svg2png(url=logo_path, write_to=logo_png, output_width=128, output_height=128)
+                logo_dest = logo_png
+            except Exception:
+                logo_dest = os.path.join(tmpdir, "logo.svg")
+                shutil.copy(logo_path, logo_dest)
+            extra_args.append(f"--variable=logo:{logo_dest}")
+
+        # Cover image
         cover_path = cover_image_path
         if cover_path and (cover_path.startswith("http://") or cover_path.startswith("https://")):
-            # URL from frontend selection — download it
             downloaded = cover_svc.download_image(cover_path, tmpdir)
             if downloaded:
                 cover_path = downloaded
@@ -176,7 +280,7 @@ date: "{date_str}"
         if cover_path and os.path.exists(cover_path):
             img_ext = os.path.splitext(cover_path)[1]
             if not img_ext:
-                img_ext = ".jpg"  # fallback extension
+                img_ext = ".jpg"
             img_dest = os.path.join(tmpdir, f"cover_image{img_ext}")
             shutil.copy(cover_path, img_dest)
             extra_args.append(f"--variable=cover-image:{img_dest}")
@@ -207,7 +311,7 @@ def _html_links_to_md(html_text: str) -> str:
         label = re.sub(r"<[^>]+>", "", m.group(2)).strip()
         return f"[{label}]({url})"
     return re.sub(
-        r'<a\s+href=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</a>',
+        r'<a\s+href=[\'"]([^\'"]+)[\'"][^>]*>(.*?)</a>',
         repl, html_text, flags=re.IGNORECASE | re.DOTALL,
     )
 

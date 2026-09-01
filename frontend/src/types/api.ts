@@ -152,6 +152,8 @@ export interface PDFReq {
   journey_home: string;
   planner: string;
   cover_image?: string;
+  restaurant_map_html?: string;
+  hotel_photo_url?: string;
 }
 
 export interface PDFRes {

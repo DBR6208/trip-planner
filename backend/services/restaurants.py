@@ -183,17 +183,17 @@ def format_restaurants(restaurants: list[dict]) -> str:
             if desc:
                 lines.append(desc)
                 lines.append("")
-            lines.append(f"- Address: {r.get('address', '')}")
+            lines.append(f"- *Address:* {r.get('address', '')}")
             lines.append(
-                f"- Walk: {r.get('walk_duration', 'N/A')} ({r.get('walk_distance', 'N/A')})"
+                f"- *Walk:* {r.get('walk_duration', 'N/A')} ({r.get('walk_distance', 'N/A')})"
             )
             lines.append(
-                f"- Rating: {r.get('rating', 'N/A')} ({r.get('user_ratings_total', 0)} reviews)"
+                f"- *Rating:* {r.get('rating', 'N/A')} ({r.get('user_ratings_total', 0)} reviews)"
             )
             if r.get("website"):
-                lines.append(f"- Website: [{r['name']}]({r['website']})")
+                lines.append(f"- *Website:* [{r['name']}]({r['website']})")
             if maps_url:
-                lines.append(f"- Google Maps: [View on Map]({maps_url})")
+                lines.append(f"- *Google Maps:* [View on Map]({maps_url})")
             lines.append("---")
             sections.append("\n".join(lines))
 
