@@ -31,7 +31,7 @@
 \usepackage{multicol}
 \usepackage{pdflscape}
 \usepackage{enumitem}
-\usepackage{xcolor}
+\usepackage[table,svgnames]{xcolor}
 \usepackage{titlesec}
 \usepackage[hidelinks]{hyperref}
 \usepackage{fancyhdr}
@@ -62,10 +62,13 @@
 \setlength\LTright{0pt}
 
 % =====================================================
-% COLORS — DBG Travel brand
+% COLORS — DBG Travel brand (matching frontend)
 % =====================================================
 \definecolor{travelblue}{HTML}{003366}
 \definecolor{travelgold}{HTML}{A07F40}
+\definecolor{travelaccent}{HTML}{D4A84B}
+\definecolor{travelbg}{HTML}{f8f7f4}
+\definecolor{tablerowalt}{HTML}{f3f1ed}
 
 % =====================================================
 % SECTION NUMBERING — only 2 levels deep
@@ -73,15 +76,26 @@
 \setcounter{secnumdepth}{2}
 \setcounter{tocdepth}{2}
 
+% Section heading style — matches frontend h1:
+% bold, #003366, with 3px gold top border
 \titleformat{\section}
-  {\Large\bfseries\color{travelblue}}
+  {\needspace{4\baselineskip}\Large\bfseries\color{travelblue}}
   {\thesection}
   {1em}
-  {}
+  {}[\vspace{-0.25em}{\color{travelgold}\rule{\textwidth}{2.5pt}}]
 
+% Subsection heading style — matches frontend h2:
+% bold, #003366, with 1.5px accent bottom border
 \titleformat{\subsection}
-  {\large\bfseries}
+  {\needspace{3\baselineskip}\large\bfseries\color{travelblue}}
   {\thesubsection}
+  {1em}
+  {}[\vspace{-0.2em}{\color{travelaccent}\rule{\textwidth}{1.2pt}}]
+
+% Subsubsection (if any) — bold, no border
+\titleformat{\subsubsection}
+  {\needspace{2\baselineskip}\normalsize\bfseries\color{travelblue}}
+  {\thesubsubsection}
   {1em}
   {}
 
@@ -103,7 +117,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 
-\fancyhead[R]{\small $title$}
+\fancyhead[R]{\small\textcolor{travelblue}{$title$}}
 \fancyfoot[C]{\thepage}
 
 \renewcommand{\headrulewidth}{1.2pt}
@@ -114,7 +128,7 @@
 }
 
 % =====================================================
-% HYPERLINKS
+% HYPERLINKS — brand blue like frontend
 % =====================================================
 \hypersetup{
   colorlinks=true,
@@ -128,6 +142,23 @@
 % =====================================================
 \floatplacement{figure}{H}
 \floatplacement{table}{H}
+
+% =====================================================
+% TABLE STYLING — matches frontend table headers
+% =====================================================
+\newcommand{\tableheader}{%
+  \rowcolor{travelblue}%
+  \color{white}%
+  \normalsize\bfseries%
+}
+\let\oldtabular\tabular
+\let\endoldtabular\endtabular
+\renewenvironment{tabular}[1]{%
+  \rowcolors{1}{}{tablerowalt}%
+  \oldtabular{#1}%
+}{%
+  \endoldtabular%
+}
 
 % =====================================================
 % DOCUMENT
@@ -148,11 +179,11 @@
   \vspace*{3cm}
   $endif$
 
-  {\Huge\bfseries $title$\par}
+  {\Huge\bfseries\color{travelblue} $title$\par}
 
   \vspace{1cm}
 
-  {\Large Weekend Travel Guide\par}
+  {\Large\textcolor{travelgold}{Weekend Travel Guide}\par}
 
   \vspace{1.5cm}
 
