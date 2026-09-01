@@ -10,7 +10,6 @@ import type {
   LegPlan,
 } from "./types/api";
 import {
-  MapPin,
   Hotel as HotelIcon,
   Utensils,
   Car,
@@ -22,7 +21,6 @@ import {
   Loader2,
   Download,
   Calendar,
-  Sun,
   Image,
 } from "lucide-react";
 import "./index.css";
@@ -527,7 +525,7 @@ export default function App() {
               <>
                 <div className="panel p-4">
                   <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4" />
+                    <Compass className="w-4 h-4" />
                     City Guide — {cap(s.city)}
                   </h2>
                   <div className="scroll-content pr-1">
@@ -537,7 +535,7 @@ export default function App() {
                 {s.guideData.tourist_office && (
                   <div className="panel p-4">
                     <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-                      <MapPin className="w-4 h-4" />
+                      <Compass className="w-4 h-4" />
                       Tourist Office
                     </h2>
                     <div className="markdown mb-3"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.guideData.tourist_office}</ReactMarkdown></div>
@@ -1032,7 +1030,7 @@ export default function App() {
               <>
                 <div className="panel p-3">
                   <h3 className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5" />
+                    <Car className="w-3.5 h-3.5" />
                     Route Overview
                   </h3>
                   <div
@@ -1078,7 +1076,7 @@ export default function App() {
           {/* Sidebar */}
           <div className={`panel p-4 ${sidebarOpen ? "" : "hidden"} md:block`}>
             <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-              <FileText className="w-4 h-4" />
+              <Calendar className="w-4 h-4" />
               Planning
             </h2>
 
@@ -1100,7 +1098,7 @@ export default function App() {
                       </span>
                     ) : (
                       <span className="flex items-center gap-1.5">
-                        <Sun className="w-4 h-4" />
+                        <Calendar className="w-4 h-4" />
                         Weekend Planning
                       </span>
                     )}
@@ -1130,7 +1128,7 @@ export default function App() {
             ) : (
               <div className="panel p-4">
                 <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-                  <Sun className="w-4 h-4" />
+                  <Calendar className="w-4 h-4" />
                   Weekend Planning — {cap(s.city)}
                 </h2>
                 <div className="scroll-content pr-1">
