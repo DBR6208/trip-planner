@@ -1258,9 +1258,44 @@ export default function App() {
               </div>
             ) : s.selectedCoverImage ? (
               <>
-                {!s.pdfUrl && (
-                  <div className="panel p-4 text-center">
-                    <p className="text-sm text-gray-500">Cover image selected. Click <strong>Generate PDF</strong> in the sidebar.</p>
+                {!s.pdfUrl && s.selectedCoverImage && (
+                  <div className="panel p-4">
+                    <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
+                      <Image className="w-4 h-4" />
+                      Cover Image Preview
+                    </h2>
+                    <div className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
+                      <img
+                        src={s.selectedCoverImage.url}
+                        alt={s.selectedCoverImage.title}
+                        className="w-full object-contain"
+                        style={{ maxHeight: "400px" }}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                          (e.target as HTMLImageElement).parentElement!.innerText = "Image could not be loaded.";
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      {s.selectedCoverImage.title} &middot; {s.selectedCoverImage.source}
+                    </p>
+                    <button
+                      onClick={handleGeneratePDF}
+                      disabled={s.pdfLoading}
+                      className="btn btn-primary btn-sm mt-3"
+                    >
+                      {s.pdfLoading ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating PDF…
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <FileText className="w-4 h-4" />
+                          Generate PDF
+                        </span>
+                      )}
+                    </button>
                   </div>
                 )}
                 {s.pdfUrl && (
