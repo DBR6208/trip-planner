@@ -192,7 +192,18 @@ citytitle: "{city} Weekend Travel Guide"
         if restaurant_map_html:
             map_png = _screenshot_map_html(restaurant_map_html, tmpdir, "map_restaurants.png")
             if map_png and os.path.exists(map_png):
-                map_markdown = "\n\n## Map\n\n![Restaurant locations](map_restaurants.png)"
+                # Copy next to output PDF so xelatex can find it
+                map_out_name = f"map_{safe_city}_{timestamp}.png"
+                map_out_path = os.path.join(guides_dir, map_out_name)
+                shutil.copy(map_png, map_out_path)
+                map_markdown = (
+                    "\n\n## Map\n\n"
+                    "\\begin{figure}[htbp]\n"
+                    "\\centering\n"
+                    "\\includegraphics[width=0.85\\textwidth]{" + map_out_path + "}\n"
+                    "\\caption{Restaurant locations.}\n"
+                    "\\end{figure}"
+                )
 
         # Hotel photo: download into tmpdir
         hotel_photo_md = ""
@@ -202,11 +213,18 @@ citytitle: "{city} Weekend Travel Guide"
                 if resp.status_code == 200:
                     ct = resp.headers.get("content-type", "image/jpeg")
                     ext = ".png" if "png" in ct else ".jpg"
-                    hotel_img_path = os.path.join(tmpdir, f"hotel{ext}")
-                    with open(hotel_img_path, "wb") as f:
+                    hotel_img_local = os.path.join(tmpdir, f"hotel{ext}")
+                    with open(hotel_img_local, "wb") as f:
                         f.write(resp.content)
-                    # Insert hotel photo markdown after the Google Maps line
-                    hotel_photo_md = f"\n\n![Hotel photo](hotel{ext}){{width=50%}}"
+                    # Copy next to output PDF so xelatex can find it
+                    hotel_out_name = f"hotel_{safe_city}_{timestamp}{ext}"
+                    hotel_out_path = os.path.join(guides_dir, hotel_out_name)
+                    shutil.copy(hotel_img_local, hotel_out_path)
+                    hotel_photo_md = (
+                        "\n\n\\begin{center}\n"
+                        "\\includegraphics[width=0.7\\textwidth]{" + hotel_out_path + "}\n"
+                        "\\end{center}"
+                    )
             except Exception as e:
                 print(f"Hotel photo download failed: {e}")
 
