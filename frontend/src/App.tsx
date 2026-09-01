@@ -1188,15 +1188,13 @@ export default function App() {
                             : "border-base-300 hover:border-gray-400"
                         }`}
                       >
-                        <div className="w-16 h-12 flex-shrink-0 rounded overflow-hidden bg-gray-100">
+                        <div className="w-16 h-12 flex-shrink-0 rounded overflow-hidden bg-gray-100 flex items-center justify-center text-xs text-gray-400">
                           <img
                             src={img.thumb}
                             alt={img.title}
                             className="w-full h-full object-cover"
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = "none";
-                              (e.target as HTMLImageElement).parentElement!.classList.add("flex", "items-center", "justify-center", "text-xs", "text-gray-400");
-                              (e.target as HTMLImageElement).parentElement!.innerText = "N/A";
                             }}
                           />
                         </div>

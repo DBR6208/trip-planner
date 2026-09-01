@@ -60,7 +60,7 @@ def download_image(url: str, save_dir: str) -> str | None:
 
 
 def _search_wikimedia(city: str) -> list[dict]:
-    """Search Wikimedia Commons for city images."""
+    """Search Wikimedia Commons for city images with proper thumbnails."""
     results = []
     search_queries = [
         f"{city} skyline",
@@ -71,6 +71,10 @@ def _search_wikimedia(city: str) -> list[dict]:
         f"{city} old town",
     ]
     tried = set()
+
+    headers = {
+        "User-Agent": "DBGTripPlanner/1.0 (trip planner brochure generator; dirk.brokken.6208@gmail.com)"
+    }
 
     for query in search_queries:
         if len(results) >= 10:
@@ -92,31 +96,59 @@ def _search_wikimedia(city: str) -> list[dict]:
             r = httpx.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params=params,
+                headers=headers,
                 timeout=10,
             )
             r.raise_for_status()
             data = r.json()
             pages = data.get("query", {}).get("search", [])
 
+            # Collect all page titles
+            titles = []
             for page in pages:
-                if len(results) >= 10:
-                    break
                 title = page.get("title", "")
                 if not title or "icon" in title.lower() or "flag" in title.lower() or "logo" in title.lower():
                     continue
+                titles.append(title)
 
-                filename = title.replace("File:", "", 1).replace(" ", "_")
-                # Generate thumbnail URL (Wikimedia uses a width prefix)
-                # Full URL
-                full_url = f"https://commons.wikimedia.org/wiki/Special:FilePath/{filename}"
-                # Thumbnail: add /thumb/ and a width
-                thumb_url = f"https://commons.wikimedia.org/wiki/Special:FilePath/{filename}?width=400"
+            if not titles:
+                continue
+
+            # Batch query imageinfo for actual thumbnail URLs
+            info_params = {
+                "action": "query",
+                "titles": "|".join(titles),
+                "prop": "imageinfo",
+                "iiprop": "url|mime",
+                "iiurlwidth": 400,
+                "format": "json",
+            }
+            info_r = httpx.get(
+                "https://commons.wikimedia.org/w/api.php",
+                params=info_params,
+                headers=headers,
+                timeout=15,
+            )
+            info_r.raise_for_status()
+            info_data = info_r.json()
+            query_pages = info_data.get("query", {}).get("pages", {})
+
+            for pid, page_data in query_pages.items():
+                if pid == "-1":
+                    continue
+                imageinfo = page_data.get("imageinfo", [])
+                if not imageinfo:
+                    continue
+                ii = imageinfo[0]
+                mime = ii.get("mime", "")
+                if not mime.startswith("image/"):
+                    continue
 
                 results.append({
-                    "url": full_url,
-                    "thumb": thumb_url,
+                    "url": ii.get("url", ""),
+                    "thumb": ii.get("thumburl", ii.get("url", "")),
                     "source": "Wikimedia Commons",
-                    "title": page.get("title", "").replace("File:", "", 1),
+                    "title": page_data.get("title", "").replace("File:", "", 1),
                 })
         except Exception as e:
             print(f"Wikimedia search '{query}' failed: {e}")
@@ -132,7 +164,8 @@ def _scrape_website_images(website_url: str, city: str) -> list[dict]:
         if not website_url.startswith("http"):
             website_url = "https://" + website_url
 
-        r = httpx.get(website_url, follow_redirects=True, timeout=15)
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; DBGTripPlanner/1.0)"}
+        r = httpx.get(website_url, follow_redirects=True, timeout=15, headers=headers)
         r.raise_for_status()
         html = r.text
 
