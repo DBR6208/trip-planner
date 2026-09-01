@@ -171,12 +171,19 @@
 \begin{titlepage}
   \centering
 
+  % Logo text in brand colors
+  {\Huge\bfseries\color{travelblue} DBG\par}
+  {\large\textcolor{travelgold}{TRAVEL}\par}
+  \vspace{0.3cm}
+  {\color{travelaccent}\rule{0.4\textwidth}{1.5pt}\par}
+  \vspace{0.5cm}
+
   $if(cover-image)$
-  \vspace*{1cm}
-  \includegraphics[width=\textwidth, height=0.35\textheight, keepaspectratio]{$cover-image$}
-  \vspace{1cm}
+  \vspace*{0.5cm}
+  \includegraphics[width=\textwidth, height=0.3\textheight, keepaspectratio]{$cover-image$}
+  \vspace{0.5cm}
   $else$
-  \vspace*{3cm}
+  \vspace*{1.5cm}
   $endif$
 
   {\Huge\bfseries\color{travelblue} $title$\par}

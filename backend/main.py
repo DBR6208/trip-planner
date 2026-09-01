@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .config import HOME_ADDRESS, OUTPUT_DIR
@@ -34,6 +35,9 @@ app.add_middleware(
 )
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Serve static files (logo, etc.)
+app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
 
 # ── API Models ──

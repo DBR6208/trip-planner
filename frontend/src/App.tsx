@@ -365,9 +365,7 @@ export default function App() {
     <div className="gradio-container">
       {/* ── Header — big centered title like Gradio's gr.Markdown("<h1>") ── */}
       <header className="mb-1 text-center">
-        <h1 className="text-2xl font-bold text-brand-blue tracking-tight">
-          Weekend Trip Planner
-        </h1>
+        <img src="/logo.svg" alt="DBG Travel" className="h-14 mx-auto mb-1" />
         <p className="text-xs text-gray-500 mt-1">
           DBG Travel · Weekend Travel Guide Generator
         </p>
