@@ -231,17 +231,16 @@ citytitle: "{city} Weekend Travel Guide"
         if map_markdown:
             full_md = full_md.rstrip() + map_markdown
         if hotel_photo_md:
-            # Insert after Google Maps line: match up to the closing ] of [View on Map]
-            full_md = re.sub(
-                r'(# Hotel\n.*?\*Google Maps:.*?\])',
-                r'\1' + hotel_photo_md,
-                full_md,
-                count=1,
-                flags=re.DOTALL,
-            )
+            # Insert after Google Maps line — use str.replace to avoid re interpreting backslashes
+            marker = "]\n\n**Overview**" if "**Overview**" in full_md else "]\n\n"
+            full_md = full_md.replace(marker, "]\n\n" + hotel_photo_md + "\n\n", 1)
 
         md_file = os.path.join(tmpdir, "guide.md")
         with open(md_file, "w", encoding="utf-8") as f:
+            f.write(full_md)
+        # Debug: save markdown alongside PDF
+        debug_md = os.path.join(guides_dir, f"guide_{safe_city}_{timestamp}.md")
+        with open(debug_md, "w", encoding="utf-8") as f:
             f.write(full_md)
 
         extra_args = [
