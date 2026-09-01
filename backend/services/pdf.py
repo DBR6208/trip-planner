@@ -16,6 +16,7 @@ from . import geo
 
 def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
     """Legacy fallback: auto-fetch a Wikimedia image. Uses cover_images module."""
+    headers = {"User-Agent": "DBGTripPlanner/1.0 (trip planner brochure generator; dirk.brokken.6208@gmail.com)"}
     search_terms = [
         f"{city} city skyline",
         f"{city} cityscape landmark",
@@ -35,6 +36,7 @@ def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
             r = httpx.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params=params,
+                headers=headers,
                 timeout=10,
             )
             r.raise_for_status()
@@ -51,7 +53,7 @@ def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
                 filename = title.replace("File:", "", 1).replace(" ", "_")
                 file_url = f"https://commons.wikimedia.org/wiki/Special:FilePath/{filename}"
                 # Follow redirects to get the actual image
-                img_resp = httpx.get(file_url, follow_redirects=True, timeout=15)
+                img_resp = httpx.get(file_url, follow_redirects=True, timeout=15, headers=headers)
                 if img_resp.status_code != 200:
                     continue
                 content_type = img_resp.headers.get("content-type", "")
@@ -173,6 +175,8 @@ date: "{date_str}"
 
         if cover_path and os.path.exists(cover_path):
             img_ext = os.path.splitext(cover_path)[1]
+            if not img_ext:
+                img_ext = ".jpg"  # fallback extension
             img_dest = os.path.join(tmpdir, f"cover_image{img_ext}")
             shutil.copy(cover_path, img_dest)
             extra_args.append(f"--variable=cover-image:{img_dest}")
