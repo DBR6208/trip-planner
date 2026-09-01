@@ -71,49 +71,27 @@ def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
 
 
 def _screenshot_map_html(html_content: str, save_dir: str, filename: str = "map_restaurants.png") -> str | None:
-    """Render a Folium HTML map to a PNG screenshot using headless Firefox + Selenium.
+    """Render a Folium HTML map to a PNG screenshot using headless Chromium + Playwright.
 
     Returns the path to the saved PNG, or None on failure.
     """
     if not html_content or not html_content.strip():
         return None
     try:
-        from selenium import webdriver
-        from selenium.webdriver.firefox.options import Options
-        from selenium.webdriver.firefox.service import Service
+        from playwright.sync_api import sync_playwright
 
-        opts = Options()
-        opts.add_argument("--headless")
-        opts.set_preference("layout.css.devPixelsPerPx", "1")
-        service = Service("/snap/bin/geckodriver")
-
-        driver = webdriver.Firefox(
-            service=service,
-            options=opts,
-        )
-        try:
-            import urllib.parse
-            # Inject viewport meta for consistent sizing
-            full_html = html_content.replace(
-                "</head>",
-                '<meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>',
-                1,
-            ) if "</head>" in html_content else html_content
-            # Use data URI instead of file:// (Firefox blocks file:// in headless mode)
-            encoded = urllib.parse.quote(full_html)
-            data_uri = f"data:text/html,{encoded}"
-            driver.set_window_size(config.MAP_SCREENSHOT_WIDTH, config.MAP_SCREENSHOT_HEIGHT)
-            driver.get(data_uri)
-            import time
-            time.sleep(2)
-            png_path = os.path.join(save_dir, filename)
-            driver.save_screenshot(png_path)
-            return png_path if os.path.exists(png_path) else None
-        finally:
-            try:
-                driver.quit()
-            except Exception:
-                pass
+        png_path = os.path.join(save_dir, filename)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(
+                viewport={"width": config.MAP_SCREENSHOT_WIDTH, "height": config.MAP_SCREENSHOT_HEIGHT},
+                device_scale_factor=2,
+            )
+            page.set_content(html_content, wait_until="networkidle")
+            page.wait_for_timeout(2000)
+            page.screenshot(path=png_path, full_page=False)
+            browser.close()
+        return png_path if os.path.exists(png_path) else None
     except Exception as e:
         print(f"Map screenshot failed: {e}")
         return None
@@ -228,7 +206,7 @@ citytitle: "{city} Weekend Travel Guide"
                     with open(hotel_img_path, "wb") as f:
                         f.write(resp.content)
                     # Insert hotel photo markdown after the Google Maps line
-                    hotel_photo_md = f"\n\n![Hotel photo](hotel{ext})"
+                    hotel_photo_md = f"\n\n![Hotel photo](hotel{ext}){{width=50%}}"
             except Exception as e:
                 print(f"Hotel photo download failed: {e}")
 
