@@ -1,35 +1,45 @@
-"""Fetch candidate city cover images from Wikimedia Commons and tourist office websites."""
+"""Fetch candidate city cover images from Wikipedia page images and Wikimedia Commons."""
 
 import os
 import re
 
 import httpx
 
+_USER_AGENT = "DBGTripPlanner/1.0 (trip planner brochure generator; dirk.brokken.6208@gmail.com)"
+_HEADERS = {"User-Agent": _USER_AGENT}
+
 
 def fetch_cover_images(city: str, tourist_office_website: str | None = None) -> list[dict]:
-    """Search for representative city photos from multiple sources.
+    """Search for representative city photos.
+
+    Strategy:
+      1. Find the city's Wikipedia article and get images from it
+         (guaranteed to be photos of that city).
+      2. Also try searching Wikimedia Commons for the city name.
 
     Returns list of dicts: [{url, thumb, source, title}]
     """
     results = []
     seen_urls = set()
 
-    # 1. Wikimedia Commons
-    wm_results = _search_wikimedia(city)
-    for img in wm_results:
+    def _add(img: dict) -> None:
         if img["url"] not in seen_urls:
             seen_urls.add(img["url"])
             results.append(img)
 
-    # 2. Tourist office website — scrape for hero/official images
-    if tourist_office_website:
-        to_results = _scrape_website_images(tourist_office_website, city)
-        for img in to_results:
-            if img["url"] not in seen_urls:
-                seen_urls.add(img["url"])
-                results.append(img)
+    # 1. Wikipedia article images — most reliable
+    for img in _fetch_wikipedia_city_images(city):
+        _add(img)
 
-    # Limit to top 10
+    # 2. Wikimedia Commons search (fallback / supplement)
+    for img in _search_wikimedia(city):
+        _add(img)
+
+    # 3. Tourist office website
+    if tourist_office_website:
+        for img in _scrape_website_images(tourist_office_website, city):
+            _add(img)
+
     return results[:10]
 
 
@@ -37,14 +47,13 @@ def download_image(url: str, save_dir: str) -> str | None:
     """Download an image URL to save_dir and return the local path."""
     try:
         ext = ".jpg"
-        # Try to guess extension from URL
         match = re.search(r"\.(jpe?g|png|gif|webp)(\?|$)", url, re.IGNORECASE)
         if match:
             ext = match.group(1).lower()
             if ext == "jpeg":
                 ext = "jpg"
 
-        resp = httpx.get(url, follow_redirects=True, timeout=20)
+        resp = httpx.get(url, follow_redirects=True, timeout=20, headers=_HEADERS)
         resp.raise_for_status()
         ct = resp.headers.get("content-type", "")
         if not ct.startswith("image/"):
@@ -59,29 +68,154 @@ def download_image(url: str, save_dir: str) -> str | None:
         return None
 
 
+# ── Wikipedia article images ──
+
+
+def _fetch_wikipedia_city_images(city: str) -> list[dict]:
+    """Get images from the city's Wikipedia article.
+
+    First resolves the city name to a Wikipedia page, then fetches images
+    from that page.  This guarantees the images are actually about the city.
+    """
+    results = []
+    try:
+        page_title = _resolve_wikipedia_page(city)
+        if not page_title:
+            return results
+
+        # Get images from the page
+        params = {
+            "action": "query",
+            "titles": page_title,
+            "prop": "images",
+            "format": "json",
+            "imlimit": 20,
+        }
+        r = httpx.get(
+            "https://en.wikipedia.org/w/api.php",
+            params=params,
+            headers=_HEADERS,
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        pages = data.get("query", {}).get("pages", {})
+        for pid, page_data in pages.items():
+            if pid == "-1":
+                continue
+            images = page_data.get("images", [])
+            titles = [img["title"] for img in images]
+
+            # Filter out icons, logos, flags, maps, and very small items
+            filtered = [
+                t for t in titles
+                if not any(skip in t.lower() for skip in [
+                    "icon", "logo", "flag", "map", "locator", "blank",
+                    "wikinews", "sound", "button", "portal", "disambig",
+                    "comics", "wordmark", "emblem", "coat of arms", "seal",
+                    "montage", "collage", "poster", "portrait",
+                    "stadtbezirke", "overview", "diagram", "plan",
+                    "skyline_", "_skyline", "karte", "liniennetz",
+                    "wappen", "screenshot", "orthophoto",
+                ])
+                # Must be a photo-type extension (jpg, jpeg, png, webp)
+                and re.search(r"\.(jpe?g|png|webp)$", t, re.IGNORECASE)
+            ]
+
+            # Get imageinfo for the filtered images (batched)
+            if filtered:
+                # Batch of 50 max
+                batch = filtered[:20]
+                info_params = {
+                    "action": "query",
+                    "titles": "|".join(batch),
+                    "prop": "imageinfo",
+                    "iiprop": "url|mime",
+                    "iiurlwidth": 400,
+                    "format": "json",
+                }
+                info_r = httpx.get(
+                    "https://en.wikipedia.org/w/api.php",
+                    params=info_params,
+                    headers=_HEADERS,
+                    timeout=15,
+                )
+                info_r.raise_for_status()
+                info_data = info_r.json()
+                for _pid, _pd in info_data.get("query", {}).get("pages", {}).items():
+                    if _pid == "-1":
+                        continue
+                    ii = _pd.get("imageinfo", [])
+                    if not ii:
+                        continue
+                    mime = ii[0].get("mime", "")
+                    if not mime.startswith("image/"):
+                        continue
+                    results.append({
+                        "url": ii[0].get("url", ""),
+                        "thumb": ii[0].get("thumburl", ii[0].get("url", "")),
+                        "source": f"Wikipedia ({page_title})",
+                        "title": _pd["title"].replace("File:", "", 1),
+                    })
+        return results[:10]
+    except Exception as e:
+        print(f"Wikipedia image fetch for {city} failed: {e}")
+        return results
+
+
+def _resolve_wikipedia_page(city: str) -> str | None:
+    """Search Wikipedia for a city page and return its canonical title."""
+    try:
+        params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": city,
+            "srlimit": 3,
+            "format": "json",
+        }
+        r = httpx.get(
+            "https://en.wikipedia.org/w/api.php",
+            params=params,
+            headers=_HEADERS,
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        pages = data.get("query", {}).get("search", [])
+        for p in pages:
+            title = p.get("title", "")
+            # Must contain the city name, and likely be the city article
+            if city.lower() in title.lower():
+                # Prefer pages ending with the city name (not "History of X" etc.)
+                return title
+        # Fallback: return first result
+        for p in pages:
+            return p.get("title")
+        return None
+    except Exception as e:
+        print(f"Wikipedia page resolve for {city} failed: {e}")
+        return None
+
+
+# ── Wikimedia Commons search (fallback) ──
+
+
 def _search_wikimedia(city: str) -> list[dict]:
-    """Search Wikimedia Commons for city images with proper thumbnails."""
+    """Search Wikimedia Commons for city images with proper thumbnails.
+
+    Filters to only include images whose title contains the city name.
+    """
     results = []
     search_queries = [
         f"{city} skyline",
         f"{city} cityscape",
-        f"{city} aerial",
-        f"{city} landmark",
-        f"{city} cathedral",
+        f"{city} aerial view",
         f"{city} old town",
     ]
-    tried = set()
-
-    headers = {
-        "User-Agent": "DBGTripPlanner/1.0 (trip planner brochure generator; dirk.brokken.6208@gmail.com)"
-    }
 
     for query in search_queries:
         if len(results) >= 10:
             break
-        if query.lower() in tried:
-            continue
-        tried.add(query.lower())
 
         try:
             params = {
@@ -90,31 +224,35 @@ def _search_wikimedia(city: str) -> list[dict]:
                 "srsearch": query,
                 "srnamespace": "6",
                 "format": "json",
-                "srlimit": 5,
+                "srlimit": 8,
                 "srqiprofile": "classic",
             }
             r = httpx.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params=params,
-                headers=headers,
+                headers=_HEADERS,
                 timeout=10,
             )
             r.raise_for_status()
             data = r.json()
             pages = data.get("query", {}).get("search", [])
 
-            # Collect all page titles
+            # Collect titles that contain the city name
             titles = []
             for page in pages:
                 title = page.get("title", "")
-                if not title or "icon" in title.lower() or "flag" in title.lower() or "logo" in title.lower():
+                if not title or any(skip in title.lower() for skip in ["icon", "flag", "logo"]):
+                    continue
+                # STRICT filter: title must contain the city name (case-insensitive)
+                # This avoids getting photos of other cities that merely mention this city in metadata
+                if city.lower() not in title.lower():
                     continue
                 titles.append(title)
 
             if not titles:
                 continue
 
-            # Batch query imageinfo for actual thumbnail URLs
+            # Batch query imageinfo
             info_params = {
                 "action": "query",
                 "titles": "|".join(titles),
@@ -126,7 +264,7 @@ def _search_wikimedia(city: str) -> list[dict]:
             info_r = httpx.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params=info_params,
-                headers=headers,
+                headers=_HEADERS,
                 timeout=15,
             )
             info_r.raise_for_status()
@@ -143,7 +281,6 @@ def _search_wikimedia(city: str) -> list[dict]:
                 mime = ii.get("mime", "")
                 if not mime.startswith("image/"):
                     continue
-
                 results.append({
                     "url": ii.get("url", ""),
                     "thumb": ii.get("thumburl", ii.get("url", "")),
@@ -155,6 +292,9 @@ def _search_wikimedia(city: str) -> list[dict]:
             continue
 
     return results
+
+
+# ── Tourist office website scraping ──
 
 
 def _scrape_website_images(website_url: str, city: str) -> list[dict]:
@@ -169,14 +309,12 @@ def _scrape_website_images(website_url: str, city: str) -> list[dict]:
         r.raise_for_status()
         html = r.text
 
-        # Find all <img> tags
         img_pattern = re.compile(
             r'<img[^>]+src=["\']([^"\']+)["\']',
             re.IGNORECASE,
         )
         found_urls = img_pattern.findall(html)
 
-        # Also look for background-image: url(...) in style attrs and <style> blocks
         bg_pattern = re.compile(
             r'background-image:\s*url\(["\']?([^"\'()]+)["\']?\)',
             re.IGNORECASE,
@@ -185,12 +323,10 @@ def _scrape_website_images(website_url: str, city: str) -> list[dict]:
 
         all_img_urls = found_urls + bg_urls
 
-        # Filter and rank
         for img_url in all_img_urls:
             if len(results) >= 5:
                 break
 
-            # Resolve relative URLs
             if img_url.startswith("//"):
                 img_url = "https:" + img_url
             elif img_url.startswith("/"):
@@ -201,21 +337,17 @@ def _scrape_website_images(website_url: str, city: str) -> list[dict]:
             if not img_url.startswith("http"):
                 continue
 
-            # Skip small icons, logos, tracking pixels
             if any(icon in img_url.lower() for icon in [
                 "icon", "logo", "favicon", "pixel", "banner", "spacer",
                 "1x1", "blank.gif", "transparent",
             ]):
                 continue
 
-            # Prefer larger-looking images (containing common hero keywords)
-            keywords = ["hero", "header", "banner", "slide", "gallery", "photo",
+            keywords = ["hero", "header", "slide", "gallery", "photo",
                         "city", city.lower(), "landscape", "skyline", "panorama",
                         "main", "top", "bg-", "background"]
             score = sum(1 for kw in keywords if kw in img_url.lower())
-
             if score >= 1:
-                # Build a thumbnail URL (remove query strings for thumb)
                 thumb = img_url.split("?")[0] if "?" in img_url else img_url
                 results.append({
                     "url": img_url,
