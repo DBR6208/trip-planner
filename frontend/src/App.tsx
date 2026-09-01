@@ -1347,8 +1347,11 @@ export default function App() {
       )}
 
       {/* ── Footer ── */}
-      <footer className="mt-10 text-center text-xs text-gray-400 pb-6">
-        &copy; DBG Travel 2026
+      <footer className="mt-10 text-center pb-6">
+        <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+          <img src="/logo.svg" alt="DBG Travel" className="h-5 w-5 opacity-40" />
+          <span>&copy; DBG Travel 2026</span>
+        </div>
       </footer>
     </div>
   );
