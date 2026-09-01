@@ -209,35 +209,43 @@ citytitle: "{city} Weekend Travel Guide"
     logo_path = os.path.join(os.path.dirname(__file__), "..", "static", "logo.svg")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Take restaurant map screenshot before building final markdown
-        restaurant_map_image_name = None
+        # Take restaurant map screenshot into tmpdir
+        map_markdown = ""
         if restaurant_map_html:
             map_png = _screenshot_map_html(restaurant_map_html, tmpdir, "map_restaurants.png")
-            if map_png:
-                restaurant_map_image_name = "map_restaurants.png"
+            if map_png and os.path.exists(map_png):
+                map_markdown = "\n\n## Map\n\n![Restaurant locations](map_restaurants.png)"
 
-        md_file = os.path.join(tmpdir, "guide.md")
-
-        # Build full markdown with map injection
-        if restaurant_map_image_name:
-            # Inject as ## subsection for correct section numbering (6.4)
-            map_markdown = "\n\n---\n\n## Restaurant Map\n\n![Restaurant locations](map_restaurants.png)"
-            full_md = full_md.rstrip() + map_markdown
-
-        # Inject hotel photo with constrained size (between address block and description)
+        # Hotel photo: download into tmpdir
+        hotel_photo_md = ""
         if hotel_photo_url:
-            photo_html = (
-                f'\n<img src="{hotel_photo_url}" width="80%" alt="Hotel photo"/>\n'
-            )
-            # Insert after the Google Maps line in the Hotel section
+            try:
+                resp = httpx.get(hotel_photo_url, timeout=15, follow_redirects=True)
+                if resp.status_code == 200:
+                    ct = resp.headers.get("content-type", "image/jpeg")
+                    ext = ".png" if "png" in ct else ".jpg"
+                    hotel_img_path = os.path.join(tmpdir, f"hotel{ext}")
+                    with open(hotel_img_path, "wb") as f:
+                        f.write(resp.content)
+                    # Insert hotel photo markdown after the Google Maps line
+                    hotel_photo_md = f"\n\n![Hotel photo](hotel{ext})"
+            except Exception as e:
+                print(f"Hotel photo download failed: {e}")
+
+        # Build the markdown file in tmpdir
+        if map_markdown:
+            full_md = full_md.rstrip() + map_markdown
+        if hotel_photo_md:
+            # Insert after Google Maps line: match up to the closing ] of [View on Map]
             full_md = re.sub(
-                r'(# Hotel\n+.*?\*Google Maps:.*?\])',
-                r'\1' + photo_html,
+                r'(# Hotel\n.*?\*Google Maps:.*?\])',
+                r'\1' + hotel_photo_md,
                 full_md,
                 count=1,
                 flags=re.DOTALL,
             )
 
+        md_file = os.path.join(tmpdir, "guide.md")
         with open(md_file, "w", encoding="utf-8") as f:
             f.write(full_md)
 
@@ -249,6 +257,7 @@ citytitle: "{city} Weekend Travel Guide"
             "--toc-depth=2",
             "--number-sections",
             "--wrap=none",
+            f"--resource-path={tmpdir}",
         ]
 
         # Logo

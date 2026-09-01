@@ -125,7 +125,8 @@ def get_walking_distances(origin, destinations: list[dict]) -> list[dict]:
 def generate_maps_url(place_id: str, place_type: str = "hotel") -> str | None:
     if place_id:
         return (
-            f"https://www.google.com/maps/search/?api=1&query={place_type}"
+            f"https://www.google.com/maps/search/?api=1"
+            f"&query={place_type}"
             f"&query_place_id={place_id}"
         )
     return None
