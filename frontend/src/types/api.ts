@@ -10,6 +10,7 @@ export interface CityGuideRes {
   tourist_office: string;
   tourist_office_data: TouristOfficeData | null;
   tourist_office_map: string;
+  attraction_images?: Record<string, Array<{ url: string; title: string }>>;
 }
 
 export interface TouristOfficeData {
@@ -148,17 +149,21 @@ export interface PDFReq {
   tourist_office: string;
   hotel: string;
   restaurants: string;
+  restaurant_data: Restaurant[];
   journey_out: string;
   journey_home: string;
   planner: string;
   cover_image?: string;
   restaurant_map_html?: string;
   hotel_photo_url?: string;
+  markdown_text?: string;
 }
 
 export interface PDFRes {
   pdf_path: string;
   download_url: string;
+  preview_url: string;
+  markdown: string;
 }
 
 export interface CoverImageInfo {

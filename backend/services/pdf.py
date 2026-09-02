@@ -3,6 +3,7 @@
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 from datetime import datetime
 
@@ -12,6 +13,7 @@ import pypandoc
 from .. import config
 from . import cover_images as cover_svc
 from . import geo
+from .restaurants import CUISINE_COLORS
 
 
 def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
@@ -148,18 +150,20 @@ def generate_pdf(
     cover_image_path: str | None = None,
     restaurant_map_html: str | None = None,
     hotel_photo_url: str | None = None,
-) -> str:
+    restaurant_data: list[dict] | None = None,
+) -> tuple[str, str]:
     """Convert markdown to PDF using pandoc + LaTeX template.
 
     If no cover_image_path is given, auto-fetches a city photo from
     Wikimedia Commons.  If restaurant_map_html is given, renders it as
-    a PNG and embeds it in the Planner section.
+    a PNG and embeds it in the Restaurants section (right after the
+    ## Restaurants header, no caption).
 
-    Returns path to generated PDF file.
+    Returns tuple of (pdf_path, final_markdown_with_images)
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Ensure Weekend_Guides directory exists
+    # Ensure guides directory exists
     guides_dir = config.WEEKEND_GUIDES_DIR
     os.makedirs(guides_dir, exist_ok=True)
 
@@ -172,16 +176,27 @@ def generate_pdf(
     )
 
     date_str = datetime.now().strftime("%B %d, %Y")
+    
+    # Capitalize city name for title
+    city_title = city[0].upper() + city[1:] if city else "Weekend Travel Guide"
+    
     yaml_header = f"""---
-title: "{city} Weekend Travel Guide"
+title: "{city_title} Weekend Travel Guide"
 date: "{date_str}"
-citytitle: "{city} Weekend Travel Guide"
+citytitle: "{city_title} Weekend Travel Guide"
 ---
 
 
 """
-
-    full_md = yaml_header + markdown_text
+    
+    # Strip existing YAML header from markdown_text to avoid duplicates
+    md_stripped = markdown_text
+    if markdown_text.startswith("---"):
+        parts = markdown_text.split("---", 2)
+        if len(parts) >= 3:
+            md_stripped = parts[2].strip() + "\n"
+    
+    full_md = yaml_header + md_stripped
 
     template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "travel_template.tex")
     logo_path = os.path.join(os.path.dirname(__file__), "..", "static", "logo.svg")
@@ -196,14 +211,39 @@ citytitle: "{city} Weekend Travel Guide"
                 map_out_name = f"map_{safe_city}_{timestamp}.png"
                 map_out_path = os.path.join(guides_dir, map_out_name)
                 shutil.copy(map_png, map_out_path)
+                # Build color legend from restaurant data
+                legend_items = []
+                seen = set()
+                if restaurant_data:
+                    for r in restaurant_data:
+                        c = r.get("cuisine", "")
+                        if c and c not in seen:
+                            seen.add(c)
+                            color = CUISINE_COLORS.get(c, "#757575")
+                            legend_items.append(
+                                f"\\textcolor[HTML]{{{color[1:]}}}{{\\textbullet}}~{c}"
+                            )
+                # Split into rows of 3 for a compact centered legend table
+                legend_block = ""
+                if legend_items:
+                    rows = []
+                    for i in range(0, len(legend_items), 3):
+                        row = " & ".join(legend_items[i:i+3])
+                        rows.append(row)
+                    legend_block = (
+                        r"\vspace{2mm}" + "\n"
+                        + r"\begin{tabular}{c c c}" + "\n"
+                        + " \\\\\n".join(rows) + "\n"
+                        + r"\end{tabular}" + "\n"
+                    )
                 map_markdown = (
-                    "\n\n## Map\n\n"
-                    + r"\begin{figure}[htbp]" + "\n"
-                    + r"\centering" + "\n"
-                    + r"\includegraphics[width=0.85\textwidth]{" + map_out_path + "}\n"
-                    + r"\caption{Restaurant locations.}" + "\n"
-                    + r"\end{figure}"
-                )# Hotel photo: download into tmpdir
+                    "\n"
+                    + r"\begin{center}" + "\n"
+                    + r"\includegraphics[width=0.95\textwidth]{" + map_out_path + "}" + "\n"
+                )
+                if legend_block:
+                    map_markdown += legend_block
+                map_markdown += r"\end{center}"# Hotel photo: download into tmpdir
         hotel_photo_md = ""
         if hotel_photo_url:
             try:
@@ -230,7 +270,12 @@ citytitle: "{city} Weekend Travel Guide"
 
         # Build the markdown file in tmpdir
         if map_markdown:
-            full_md = full_md.rstrip() + map_markdown
+            # Insert restaurant map after # Restaurants header, before first ## sub-head
+            full_md = full_md.replace(
+                "# Restaurants\n\n",
+                f"# Restaurants\n\n{map_markdown}\n\n",
+                1,
+            )
         if hotel_photo_md:
             # Insert photo before **Overview** heading in Hotel section
             full_md = full_md.replace("**Overview**", hotel_photo_md + "\n\n**Overview**", 1)
@@ -293,7 +338,44 @@ citytitle: "{city} Weekend Travel Guide"
             outputfile=output_pdf, extra_args=extra_args,
         )
 
-    return output_pdf
+    # Return both the PDF path AND the final markdown (with images injected)
+    # so the frontend can display the exact markdown used to generate the PDF
+    return output_pdf, full_md
+
+
+def compress_pdf(pdf_path: str) -> None:
+    """Compress a PDF in-place using Ghostscript.
+
+    Reduces file size dramatically (images downsampled, font subsetting, etc.).
+    Falls back silently if Ghostscript is unavailable or compression fails.
+    """
+    try:
+        tmp = pdf_path + ".tmp"
+        result = subprocess.run(
+            [
+                "gs",
+                "-sDEVICE=pdfwrite",
+                "-dCompatibilityLevel=1.7",
+                "-dPDFSETTINGS=/ebook",
+                "-dNOPAUSE", "-dQUIET", "-dBATCH",
+                "-dDownsampleColorImages=true",
+                "-dColorImageResolution=150",
+                "-dDownsampleGrayImages=true",
+                "-dGrayImageResolution=150",
+                "-dDownsampleMonoImages=true",
+                "-dMonoImageResolution=150",
+                f"-sOutputFile={tmp}",
+                pdf_path,
+            ],
+            capture_output=True, timeout=60,
+        )
+        if result.returncode == 0 and os.path.exists(tmp):
+            os.replace(tmp, pdf_path)
+        elif os.path.exists(tmp):
+            os.remove(tmp)
+    except Exception:
+        # If compression fails, keep the original
+        pass
 
 
 def _remove_first_title(text: str) -> str:

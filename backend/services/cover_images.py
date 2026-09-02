@@ -1,7 +1,8 @@
-"""Fetch candidate city cover images from Wikipedia page images and Wikimedia Commons."""
+"""Fetch candidate city cover images from Wikipedia, Wikimedia Commons, and Google Images."""
 
 import os
 import re
+import json
 
 import httpx
 
@@ -16,6 +17,8 @@ def fetch_cover_images(city: str, tourist_office_website: str | None = None) -> 
       1. Find the city's Wikipedia article and get images from it
          (guaranteed to be photos of that city).
       2. Also try searching Wikimedia Commons for the city name.
+      3. Search Google Images via Bing Image Search (free, no auth).
+      4. Tourist office website images.
 
     Returns list of dicts: [{url, thumb, source, title}]
     """
@@ -35,7 +38,11 @@ def fetch_cover_images(city: str, tourist_office_website: str | None = None) -> 
     for img in _search_wikimedia(city):
         _add(img)
 
-    # 3. Tourist office website
+    # 3. Google Images via Bing Image Search (free, no API key needed)
+    for img in _search_bing_images(city):
+        _add(img)
+
+    # 4. Tourist office website
     if tourist_office_website:
         for img in _scrape_website_images(tourist_office_website, city):
             _add(img)
@@ -51,7 +58,7 @@ def download_image(url: str, save_dir: str) -> str | None:
         if match:
             ext = match.group(1).lower()
             if ext == "jpeg":
-                ext = "jpg"
+                ext = ".jpg"
 
         resp = httpx.get(url, follow_redirects=True, timeout=20, headers=_HEADERS)
         resp.raise_for_status()
@@ -204,13 +211,15 @@ def _search_wikimedia(city: str) -> list[dict]:
     """Search Wikimedia Commons for city images with proper thumbnails.
 
     Filters to only include images whose title contains the city name.
+    Focuses on landmarks and cityscapes, excludes portraits and people.
     """
     results = []
     search_queries = [
-        f"{city} skyline",
-        f"{city} cityscape",
-        f"{city} aerial view",
-        f"{city} old town",
+        f"{city} skyline landmark",
+        f"{city} cityscape architecture",
+        f"{city} historic center",
+        f"{city} cathedral church building",
+        f"{city} aerial view panorama",
     ]
 
     for query in search_queries:
@@ -294,6 +303,80 @@ def _search_wikimedia(city: str) -> list[dict]:
     return results
 
 
+# ── Bing Image Search (Google-like results, no auth needed) ──
+
+
+def _search_bing_images(city: str) -> list[dict]:
+    """Search Bing Images for city photos focusing on landmarks and cityscapes.
+    
+    Uses Bing Image Search to find relevant city images.
+    Focuses on architecture, landmarks, and scenic views - excludes people and portraits.
+    Returns relevant city images (skylines, landmarks, attractions).
+    """
+    results = []
+    search_queries = [
+        f"{city} skyline landmark photography -people",
+        f"{city} cityscape architecture -portrait -people",
+        f"{city} historic center building -person",
+        f"{city} cathedral church monument -people",
+        f"{city} aerial view panorama -crowd",
+    ]
+    
+    for query in search_queries:
+        if len(results) >= 8:
+            break
+        
+        try:
+            # Use Bing Image Search endpoint
+            search_url = "https://www.bing.com/images/search"
+            params = {
+                "q": query,
+                "form": "HDRSC2",
+                "first": 1,
+            }
+            
+            r = httpx.get(
+                search_url,
+                params=params,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                },
+                timeout=10,
+                follow_redirects=True,
+            )
+            r.raise_for_status()
+            
+            # Extract image URLs from Bing response
+            # Look for JSON-encoded image data in HTML
+            img_pattern = re.compile(
+                r'"murl":"([^"]+\.(?:jpg|jpeg|png|webp))"',
+                re.IGNORECASE
+            )
+            matches = img_pattern.findall(r.text)
+            
+            for img_url in matches[:4]:  # Take top 4 per query
+                # Filter out small/generic images
+                if any(skip in img_url.lower() for skip in [
+                    "icon", "logo", "flag", "badge", "1x1", "avatar", 
+                    "profile", "person", "people", "portrait"
+                ]):
+                    continue
+                if len(img_url) < 50:  # URLs too short are likely not real images
+                    continue
+                    
+                results.append({
+                    "url": img_url,
+                    "thumb": img_url,
+                    "source": "Bing Images",
+                    "title": city,
+                })
+        except Exception as e:
+            print(f"Bing image search for '{query}' failed: {e}")
+            continue
+    
+    return results
+
+
 # ── Tourist office website scraping ──
 
 
@@ -310,13 +393,13 @@ def _scrape_website_images(website_url: str, city: str) -> list[dict]:
         html = r.text
 
         img_pattern = re.compile(
-            r'<img[^>]+src=["\']([^"\']+)["\']',
+            r'<img[^>]+src=["\']([\"\' ]+)["\']',
             re.IGNORECASE,
         )
         found_urls = img_pattern.findall(html)
 
         bg_pattern = re.compile(
-            r'background-image:\s*url\(["\']?([^"\'()]+)["\']?\)',
+            r'background-image:\s*url\(["\']?([^\"\' ()]+)["\']?\)',
             re.IGNORECASE,
         )
         bg_urls = bg_pattern.findall(html)

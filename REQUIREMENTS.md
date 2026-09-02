@@ -1,14 +1,141 @@
 # Trip Planner — Brochure Review & Requirements
 
-Review date: 2026-08-23
+Review date: 2026-08-23  
+Updated: 2026-09-02 (Cover image search, Explore tab cleanup)  
 Docs read: Aachen.pdf, Bielefeld.pdf, Boulogne-sur-Mer.pdf, Köln.pdf, Dortmund.pdf
 (plus several other PDFs in brochures/ for context)
 
 ---
 
-## ✅ What works well — preserve these
+## ✅ Recently Fixed (2026-09-02)
 
-- **City guides** are well-researched, engaging, and capture each city's character
+### Cover Image Search Improvements
+
+**What was done:**
+- Improved Wikimedia search queries to focus on landmarks and architecture: `"skyline landmark"`, `"cityscape architecture"`, `"historic center"`, `"cathedral church building"`, `"aerial view panorama"`
+- Enhanced Bing Images search with negative filters (`-people`, `-portrait`, `-person`, `-crowd`) to exclude portrait photography
+- Added URL-level filters to exclude avatar, profile, person, people, portrait keywords
+- Removed attraction photos gallery from Explore tab (cluttered the UI; users should see city guide only)
+
+**Result:**
+- Cover images in PDF brochures now feature high-quality cityscape and landmark photos
+- No low-quality Wikipedia generic images
+- No portraits of people or animals
+- Tavily-powered search with proper landmark/architecture focus
+
+**Files modified:**
+- `backend/services/cover_images.py` — improved `_search_wikimedia()` and `_search_bing_images()` with better queries and filters
+- `frontend/src/App.tsx` — removed attraction photos gallery from Explore tab
+
+### Explore Tab Restoration
+
+**What was done:**
+- Removed the "Attraction Photos" gallery section that was displaying clicked-through links
+- Explore tab now shows only the city guide markdown (clean, simple, focused)
+- No pictures or galleries in the Explore tab
+
+**Files modified:**
+- `frontend/src/App.tsx` — removed attractions gallery rendering
+
+---
+
+## 🚨 Critical Issues (Blocking, 2026-09-02)
+
+### Issue 1: Route Calculation Fails with Error
+
+**Status:** BLOCKING  
+**Severity:** Critical  
+**Reported:** 2026-09-02 (current session)
+
+**Problem:**
+- Route calculation cannot be performed
+- An error is thrown when attempting to calculate a route
+- User cannot use the Route Planning feature
+
+**Expected Behavior:**
+- User enters departure address and destination
+- User clicks "Find Route"
+- Algorithm calculates charging stops and displays route
+
+**Actual Behavior:**
+- Error occurs (specific error message TBD — capture full stack trace)
+- Route not displayed
+- No charging stations recommended
+
+**Investigation Needed:**
+- Check backend logs for route calculation error
+- Verify OSRM API endpoint is accessible
+- Check if `find_route_and_stations()` function is working
+- Verify distance calculation is not throwing exception
+- Test with simple address pair (e.g., Belgium → Osnabrück)
+
+**Files to Check:**
+- `backend/services/charging.py` — route calculation logic
+- `backend/main.py` — `/api/route` and `/api/route/plan` endpoints
+- OSRM API connectivity
+
+---
+
+### Issue 2: Cover Images Still Showing People/Animals (Filters Not Working)
+
+**Status:** BLOCKING  
+**Severity:** Critical  
+**Reported:** 2026-09-02 (current session)
+
+**Problem:**
+- Cover images in PDF brochures are displaying people and animals
+- Negative filters and URL keyword exclusions are NOT working
+- Images are "completely useless" for cover photos — inappropriate for professional brochure
+- Bing search and Wikimedia queries are returning wrong content
+
+**Expected Behavior:**
+- Cover images should show only cityscapes, landmarks, architecture
+- No people, portraits, faces, animals, or creatures
+- Photos relevant to the city's main attractions (cathedrals, skylines, historic centers)
+
+**Actual Behavior:**
+- Search results include tourist photos with people
+- Search results include animal/nature photos
+- URL filters not catching these images
+- Negative operators in Bing query (`-people`, `-portrait`) not effective
+
+**Root Cause Analysis Needed:**
+1. **Bing Image Search:** Negative operators may not work as expected or Bing may ignore them
+2. **URL filtering:** Keywords like "people", "portrait" may not appear in URL itself
+3. **Wikimedia queries:** May not be specific enough (too broad, catching generic/wrong results)
+4. **Image content:** Can't filter by visual content without ML/vision analysis
+
+**Possible Solutions (TBD):**
+- Switch to different image source (e.g., Unsplash API, Pexels API, Pixabay API with proper filtering)
+- Use Google Custom Search API with strict image licensing/type filters
+- Implement image recognition/filtering (requires vision model to analyze downloaded images)
+- Manually curate a list of good cover image URLs per city
+- Use a specialized architecture/landmark photo database (Architekture Magazine, ArchDaily, etc.)
+
+**Files to Check:**
+- `backend/services/cover_images.py` — Bing search implementation, URL filtering logic
+- Verify actual URLs being returned from Bing
+- Test Bing queries manually in browser to see what results come back
+- Check if negative operators (`-people`, `-portrait`) work in Bing Image Search
+- Verify which images are actually being downloaded and used
+
+**Current Code Issues:**
+- `_search_bing_images()`: Uses regex `r'"murl":"([^"]+\.(?:jpg|jpeg|png|webp))"'` to extract URLs
+- URL filters check for: `["icon", "logo", "flag", "badge", "1x1", "avatar", "profile", "person", "people", "portrait"]`
+- Bing queries: Include `-people`, `-portrait`, `-person`, `-crowd` negative operators
+- **Problem:** URL string may not contain these keywords even if image shows people
+
+**Action Required:**
+- DO NOT START CODING YET
+- Capture actual image URLs being returned from cover_images search
+- Compare URLs against what's appearing in actual PDF brochures
+- Test if Bing's negative operators actually work (manual browser test)
+- Investigate alternative image sources with better quality control
+- Consider using an image filtering API or ML model to validate images before use
+
+---
+
+## ✅ What works well — preserve these
 - **Tone** is relaxed, elegant, and practical — matches the brief
 - **EV route planning** is detailed and functional (battery %, leg distances, charger details)
 - **Weekend itineraries** are well-paced: relaxed evenings, moderate days, no strenuous activities

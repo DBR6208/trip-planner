@@ -94,6 +94,7 @@ interface FullState {
   itineraryLoading: boolean;
   pdfUrl: string;
   pdfLoading: boolean;
+  markdownText: string;
   coverImages: import("./types/api").CoverImageInfo[];
   coverImagesLoading: boolean;
   selectedCoverImage: import("./types/api").CoverImageInfo | null;
@@ -157,6 +158,7 @@ export default function App() {
     itineraryLoading: false,
     pdfUrl: "",
     pdfLoading: false,
+    markdownText: "",
     coverImages: [],
     coverImagesLoading: false,
     selectedCoverImage: null,
@@ -350,14 +352,17 @@ export default function App() {
         tourist_office: s.guideData.tourist_office,
         hotel: s.hotelFormatted,
         restaurants: s.restaurantFormatted,
+        restaurant_data: s.restaurants,
         journey_out: s.planOut?.markdown || "",
         journey_home: s.planHome?.markdown || "",
         planner: s.itinerary,
         cover_image: s.selectedCoverImage?.url,
         restaurant_map_html: s.restaurantMapHtml || undefined,
         hotel_photo_url: s.selectedHotel?.photo_url || undefined,
+        markdown_text: s.markdownText || undefined,
       });
       update("pdfUrl", data.download_url);
+      update("markdownText", data.markdown);
     } catch (e) { showError(e); }
     finally { update("pdfLoading", false); }
   };

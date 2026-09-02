@@ -208,17 +208,29 @@ def generate_restaurant_map(
 
     - Hotel: BeautifyIcon fa-hotel circle (same style as hotel map)
     - Restaurants: BeautifyIcon fa-utensils circle, colored by cuisine
-    - Map centered on the hotel, zoom 15.
+    - Map centered on the average lat/lon of hotel + all restaurants.
     """
     if not hotel or not hotel.get("latitude"):
         return ""
 
-    center = (hotel["latitude"], hotel["longitude"])
+    # Collect all valid lat/lng points for averaging
+    hotel_lat = hotel["latitude"]
+    hotel_lon = hotel["longitude"]
+    points = [(hotel_lat, hotel_lon)]
+    for r in restaurants:
+        lat = r.get("latitude")
+        lng = r.get("longitude")
+        if lat is not None and lng is not None:
+            points.append((lat, lng))
+
+    avg_lat = sum(p[0] for p in points) / len(points)
+    avg_lon = sum(p[1] for p in points) / len(points)
+    center = (avg_lat, avg_lon)
     m = folium.Map(location=center, zoom_start=15, tiles="OpenStreetMap")
 
     # Hotel marker
     folium.Marker(
-        location=center,
+        location=(hotel_lat, hotel_lon),
         tooltip=hotel.get("name", "Hotel"),
         icon=BeautifyIcon(
             icon="hotel",

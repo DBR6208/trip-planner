@@ -52,6 +52,7 @@ class CityGuideResponse(BaseModel):
     tourist_office: str
     tourist_office_data: dict | None
     tourist_office_map: str = ""
+    attraction_images: dict = {}
 
 
 class HotelSearchRequest(BaseModel):
@@ -134,12 +135,14 @@ class PDFRequest(BaseModel):
     tourist_office: str
     hotel: str
     restaurants: str
+    restaurant_data: list[dict] = []
     journey_out: str
     journey_home: str
     planner: str
     cover_image: str | None = None
     restaurant_map_html: str | None = None
     hotel_photo_url: str | None = None
+    markdown_text: str | None = None  # if provided, skip build_markdown and use this
 
 
 class CoverImagesRequest(BaseModel):
@@ -162,17 +165,26 @@ class CoverImagesResponse(BaseModel):
 
 @app.post("/api/city-guide", response_model=CityGuideResponse)
 def get_city_guide(req: CityGuideRequest):
-    """Generate city guide + tourist office info."""
+    """Generate city guide + tourist office info + attraction images."""
     try:
         guide = guide_svc.generate_city_guide(req.city, req.country)
         office = to_svc.find_tourist_office(req.city)
         formatted_to = to_svc.format_tourist_office(office) if office else ""
         to_map = to_svc.generate_tourist_office_map(req.city, office) if office else ""
+        
+        # Fetch images for attractions from the guide
+        attraction_images = {}
+        try:
+            attraction_images = guide_svc.get_attraction_images(req.city, req.country, guide)
+        except Exception as img_err:
+            print(f"Warning: Could not fetch attraction images: {img_err}")
+        
         return CityGuideResponse(
             city_guide=guide,
             tourist_office=formatted_to,
             tourist_office_data=office,
             tourist_office_map=to_map,
+            attraction_images=attraction_images,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -345,39 +357,78 @@ def get_cover_images(req: CoverImagesRequest):
 def generate_pdf(req: PDFRequest):
     """Generate full PDF brochure from all data."""
     try:
-        data = {
-            "city_guide": req.city_guide,
-            "tourist_office": req.tourist_office,
-            "hotel": req.hotel,
-            "restaurants": req.restaurants,
-            "journey_out": req.journey_out,
-            "journey_home": req.journey_home,
-            "planner": req.planner,
-        }
-        md = pdf_svc.build_markdown(data)
-        pdf_path = pdf_svc.generate_pdf(
+        if req.markdown_text:
+            md = req.markdown_text
+            # User edited markdown: skip auto-injection of map/hotel photo
+            # (they should already be in the markdown if needed)
+            restaurant_map_html = None
+            hotel_photo_url = None
+        else:
+            data = {
+                "city_guide": req.city_guide,
+                "tourist_office": req.tourist_office,
+                "hotel": req.hotel,
+                "restaurants": req.restaurants,
+                "journey_out": req.journey_out,
+                "journey_home": req.journey_home,
+                "planner": req.planner,
+            }
+            md = pdf_svc.build_markdown(data)
+            # First generation: auto-inject map and hotel photo
+            restaurant_map_html = req.restaurant_map_html
+            hotel_photo_url = req.hotel_photo_url
+        
+        pdf_path, final_markdown = pdf_svc.generate_pdf(
             md, req.city, req.country, req.cover_image,
-            restaurant_map_html=req.restaurant_map_html,
-            hotel_photo_url=req.hotel_photo_url,
+            restaurant_map_html=restaurant_map_html,
+            hotel_photo_url=hotel_photo_url,
+            restaurant_data=req.restaurant_data,
         )
-        return {"pdf_path": pdf_path, "download_url": f"/api/pdf/download/{os.path.basename(pdf_path)}"}
+        # Compress the generated PDF with Ghostscript
+        pdf_svc.compress_pdf(pdf_path)
+        return {
+            "pdf_path": pdf_path,
+            "download_url": f"/api/pdf/download-attachment/{os.path.basename(pdf_path)}",
+            "preview_url": f"/api/pdf/preview/{os.path.basename(pdf_path)}",
+            "markdown": final_markdown,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/pdf/download/{filename}")
-def download_pdf(filename: str):
-    """Download a generated PDF from Weekend_Guides or brochures."""
-    # Check Weekend_Guides first, then fall back to brochures
+@app.get("/api/pdf/preview/{filename}")
+def preview_pdf_base64(filename: str):
+    """Return PDF as base64 for embedding in iframe data URL."""
+    import base64
+    filepath = _resolve_pdf_path(filename)
+    with open(filepath, "rb") as f:
+        pdf_bytes = f.read()
+    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+    return {"pdf_base64": pdf_b64}
+
+
+@app.get("/api/pdf/download-attachment/{filename}")
+def download_pdf_attachment(filename: str):
+    """Download a PDF as an attachment (forces browser save dialog)."""
+    filepath = _resolve_pdf_path(filename)
+    return FileResponse(
+        filepath,
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _resolve_pdf_path(filename: str) -> str:
+    """Find a PDF in guides/ or brochures/."""
     guides_path = os.path.join(WEEKEND_GUIDES_DIR, filename)
     brochures_path = os.path.join(OUTPUT_DIR, filename)
     if os.path.exists(guides_path):
-        filepath = guides_path
+        return guides_path
     elif os.path.exists(brochures_path):
-        filepath = brochures_path
+        return brochures_path
     else:
         raise HTTPException(status_code=404, detail="PDF not found")
-    return FileResponse(filepath, media_type="application/pdf", filename=filename)
 
 
 @app.get("/api/health")

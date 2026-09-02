@@ -19,7 +19,7 @@ env/
 
 # Generated brochures (build artifacts)
 brochures/
-Weekend_Guides/
+guides/
 
 # Jupyter notebook outputs
 .ipynb_checkpoints/

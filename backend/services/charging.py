@@ -17,25 +17,33 @@ def _recommend_stations(
     route_coords: list,
     stations: list[dict],
     start_battery: float,
+    total_distance_km: float,
     reverse: bool = False,
 ) -> list[dict]:
     """Recommend minimal charging stops to arrive with ~target battery.
 
     Strategy: if the current battery can't reach the end with at least the target
     battery (60%), find a station that:
-      a) is reachable (arrival >= min_battery 15%)
-      b) after charging to 90%, the end is reachable
+      a) is reachable (arrival >= min_battery 20%)
+      b) after charging to 90%, we can reach the next checkpoint or end with min 20%
     Among those, pick the best brand (Circle K > Ionity > Fastned > others).
     Repeat from that station until the end is reachable. Minimizes stops by
     only charging when needed.
 
     Brand preference: Circle K → Ionity → Fastned → others.
 
+    Args:
+        route_coords: list of (lat, lon) tuples
+        stations: list of station dicts
+        start_battery: starting battery %
+        total_distance_km: actual route distance in km (from OSRM, not calculated from coords)
+        reverse: if True, plan return trip (reverse direction)
+
     Returns list of recommended station dicts (empty if none needed).
     """
     charge_to = config.CHARGE_UP_TO_PERCENT
     target = config.TARGET_ARRIVAL_BATTERY
-    min_battery = 30.0
+    min_battery = 15.0  # Minimum at any charging stop (15% = safe margin)
 
     BRAND_PRIORITY = {
         "Circle K": 0,
@@ -47,14 +55,20 @@ def _recommend_stations(
         return []
 
     line = shapely.geometry.LineString(route_coords)
+    
+    # Project stations onto route using simple line projection
+    # (total_distance_km from OSRM is more accurate than reconstructing from coords)
     projected = []
     for s in stations:
         pt = shapely.geometry.Point(s["longitude"], s["latitude"])
-        dist = line.project(pt, normalized=False) * 111.0
+        # Project onto the route line (normalized 0-1, then scale by total distance)
+        proj_norm = line.project(pt, normalized=True)
+        s_dist = proj_norm * total_distance_km
+        
         priority = BRAND_PRIORITY.get(s.get("brand", ""), 99)
-        projected.append({**s, "_dist": dist, "_prio": priority})
+        projected.append({**s, "_dist": s_dist, "_prio": priority})
 
-    total_length = line.length * 111.0
+    total_length = total_distance_km
 
     if reverse:
         projected.sort(key=lambda x: total_length - x["_dist"])
@@ -67,38 +81,80 @@ def _recommend_stations(
 
     recommended = []
     battery = start_battery
+    max_iterations = 10  # Safety limit
+    used_stations = set()  # Track stations we've already charged at
+    
+    # Special case: if starting battery is too low to reach ANY station on route,
+    # must charge at the nearest station FIRST
+    if reverse:
+        # For reverse (returning), find closest station to current start position
+        min_dist_to_station = min(abs(s["_dist"] - current_pos) for s in projected) if projected else float('inf')
+    else:
+        # For outbound, same logic
+        min_dist_to_station = min(abs(s["_dist"] - current_pos) for s in projected) if projected else float('inf')
+    
+    if min_dist_to_station < float('inf'):
+        battery_to_nearest = geo.remaining_battery(battery, min_dist_to_station)
+        if battery_to_nearest < min_battery:
+            # Must charge immediately - find closest station and add it
+            closest_station = min(projected, key=lambda s: abs(s["_dist"] - current_pos))
+            recommended.append({k: v for k, v in closest_station.items() if not k.startswith("_")})
+            used_stations.add((closest_station["location"], closest_station["brand"]))
+            battery = charge_to
+            current_pos = closest_station["_dist"]
 
-    while True:
+    for iteration in range(max_iterations):
         # Can we reach the end with at least the target battery?
         remaining_to_end = abs(end_pos - current_pos)
         if geo.remaining_battery(battery, remaining_to_end) >= target:
             break  # no charge needed
 
-        # Need a charge. Find viable candidates.
+        # Need a charge. Find viable candidates (excluding already-used stations).
         candidates = []
         for s in projected:
             s_dist = s["_dist"]
             s_leg = abs(s_dist - current_pos)
+            
+            # Skip if too close or already used
             if s_leg < 1:
                 continue
-            s_arrival = geo.remaining_battery(battery, s_leg)
-            if s_arrival < min_battery:
+            s_key = (s["location"], s["brand"])
+            if s_key in used_stations:
                 continue
-            remaining_after = abs(end_pos - s_dist)
-            if geo.remaining_battery(charge_to, remaining_after) >= min_battery:
+            
+            s_arrival = geo.remaining_battery(battery, s_leg)
+            
+            # Special case for initial leg of return journey: if battery is critically low,
+            # accept any station we can physically reach, even if below min_battery
+            if iteration == 0 and reverse and battery < 70.0:
+                if s_arrival < 0:  # Can't reach even this far
+                    continue
+                # Don't check final_arrival for this first stop, just recommend it
                 candidates.append(s)
+            else:
+                # Normal case: require safe margins
+                if s_arrival < min_battery:
+                    continue
+                # After charging, check if we can reach destination reasonably
+                remaining_after = abs(end_pos - s_dist)
+                final_arrival = geo.remaining_battery(charge_to, remaining_after)
+                min_acceptable = config.TARGET_ARRIVAL_BATTERY - 5.0
+                if final_arrival >= min_acceptable:
+                    candidates.append(s)
 
         if not candidates:
             break
 
-        # Best brand; among same brand, pick farthest to minimize stops
+        # Best candidate: farthest reachable (to minimize stops).
+        # Among equal distance, prefer better brand.
         candidates.sort(key=lambda x: (
-            x["_prio"],
-            -abs(x["_dist"] - current_pos),  # farthest reachable first
+            -abs(x["_dist"] - current_pos),  # farthest first (minimize stops)
+            x["_prio"],  # then best brand
         ))
         chosen = candidates[0]
 
         recommended.append({k: v for k, v in chosen.items() if not k.startswith("_")})
+        used_stations.add((chosen["location"], chosen["brand"]))
         battery = charge_to
         current_pos = chosen["_dist"]
 
@@ -121,9 +177,9 @@ def _load_stations() -> gpd.GeoDataFrame | None:
 
 
 def _find_stations_along_route(
-    route_coords: list, gdf: gpd.GeoDataFrame, buffer_m: int = 2000
+    route_coords: list, gdf: gpd.GeoDataFrame, buffer_m: int = 5000
 ) -> list[dict]:
-    """Find charging stations within buffer of route line."""
+    """Find charging stations within buffer of route line (5km default)."""
     route_line = shapely.geometry.LineString(route_coords)
     buffered = route_line.buffer(buffer_m / 111000)  # approx degree conversion
     nearby = gdf[gdf.geometry.intersects(buffered)]
@@ -207,10 +263,10 @@ def find_route_and_stations(
         "route_coords": route_coords,
         "start_battery": start_battery,
         "recommended_out": _recommend_stations(
-            route_coords, stations, start_battery, reverse=False
+            route_coords, stations, start_battery, distance, reverse=False
         ),
         "recommended_home": _recommend_stations(
-            route_coords, stations, arrival, reverse=True
+            route_coords, stations, arrival, distance, reverse=True
         ),
     }
 
