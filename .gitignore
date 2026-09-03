@@ -21,6 +21,12 @@ env/
 brochures/
 Weekend_Guides/
 
+# Frontend dependencies and build artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
 # Jupyter notebook outputs
 .ipynb_checkpoints/
 

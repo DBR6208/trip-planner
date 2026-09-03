@@ -11,7 +11,6 @@ import pypandoc
 
 from .. import config
 from . import cover_images as cover_svc
-from . import geo
 
 
 def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:

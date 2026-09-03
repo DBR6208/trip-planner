@@ -1,7 +1,6 @@
 """Trip Planner — FastAPI Backend."""
 
 import os
-import tempfile
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
