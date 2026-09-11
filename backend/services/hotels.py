@@ -282,12 +282,9 @@ def format_hotel(hotel: dict, description: str, parkings: list[dict] | None = No
 
 
 def _gmaps_url(place_id: str) -> str | None:
-    """Google Maps URL for a place_id."""
+    """Google Maps URL for a place_id. Direct place URL avoids redirect warnings."""
     if place_id:
-        return (
-            "https://www.google.com/maps/search/?api=1&query=hotel"
-            f"&query_place_id={place_id}"
-        )
+        return f"https://www.google.com/maps?q=place_id:{place_id}"
     return None
 
 

@@ -7,12 +7,9 @@ from .. import config
 
 
 def _generate_google_maps_url(place_id: str) -> str | None:
-    """Internal helper: Google Maps URL for a place_id."""
+    """Internal helper: Google Maps URL for a place_id. Direct place URL avoids redirect warnings."""
     if place_id:
-        return (
-            "https://www.google.com/maps/search/?api=1&query=tourist_office"
-            f"&query_place_id={place_id}"
-        )
+        return f"https://www.google.com/maps?q=place_id:{place_id}"
     return None
 
 
