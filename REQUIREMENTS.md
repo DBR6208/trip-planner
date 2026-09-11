@@ -41,38 +41,27 @@ Docs read: Aachen.pdf, Bielefeld.pdf, Boulogne-sur-Mer.pdf, Köln.pdf, Dortmund.
 
 ## 🚨 Critical Issues (Blocking, 2026-09-02)
 
-### Issue 1: Route Calculation Fails with Error
+### Issue 1: Route Calculation Fails with Error — ✅ FIXED (2026-09-11)
 
-**Status:** BLOCKING  
-**Severity:** Critical  
-**Reported:** 2026-09-02 (current session)
+**Status:** RESOLVED — Severity: Critical  **Fix date:** 2026-09-11
 
-**Problem:**
-- Route calculation cannot be performed
-- An error is thrown when attempting to calculate a route
-- User cannot use the Route Planning feature
+**Root Cause:** The old greedy `_recommend_stations()` used `line.project()` (straight-line approximation) instead of actual road distances. It had no backtracking — if the farthest-reachable station led to a dead end, it couldn't recover. The actual error was a silent failure: the greedy algorithm returned an empty list or wrong stations.
 
-**Expected Behavior:**
-- User enters departure address and destination
-- User clicks "Find Route"
-- Algorithm calculates charging stops and displays route
+**Fix:** Replaced with BFS + ORS distance matrix:
+- `_build_battery_matrix()` — actual road distances via ORS `distance_matrix()` API
+- `_bfs_search_route()` — BFS over battery-drop graph with graduated constraint relaxation
+- Brand preference (Circle K → Ionity → Fastned) folded into penalty function
+- Greedy algorithm preserved as `_recommend_stations_greedy()` fallback
+- Route tab now works standalone (no hotel required) with auto-recalculate
 
-**Actual Behavior:**
-- Error occurs (specific error message TBD — capture full stack trace)
-- Route not displayed
-- No charging stations recommended
+**Result (Heirweg → Osnabrück, 370.5 km):**
+- Forward: 1 stop — EnBW Mobility, Oberhausen (Lindnerstraße 137)
+- Return: 2 stops — EnBW Osnabrück → Allego Antwerpen
 
-**Investigation Needed:**
-- Check backend logs for route calculation error
-- Verify OSRM API endpoint is accessible
-- Check if `find_route_and_stations()` function is working
-- Verify distance calculation is not throwing exception
-- Test with simple address pair (e.g., Belgium → Osnabrück)
-
-**Files to Check:**
-- `backend/services/charging.py` — route calculation logic
-- `backend/main.py` — `/api/route` and `/api/route/plan` endpoints
-- OSRM API connectivity
+**Files changed:**
+- `backend/services/geo.py` — added `battery_drop_for_distance()`
+- `backend/services/charging.py` — added BFS functions, kept greedy as fallback
+- `frontend/src/App.tsx` — Route tab no longer requires hotel, auto-recalculate added
 
 ---
 

@@ -258,11 +258,11 @@ def generate_restaurant_map(
         maps_url = geo.generate_maps_url(r.get("place_id", ""), "restaurant")
         if r.get("website"):
             popup_links.append(
-                f'<a href="{r["website"]}" target="_blank">Website</a>'
+                f'<a href="{r["website"]}" target="_blank" rel="noopener noreferrer">Website</a>'
             )
         if maps_url:
             popup_links.append(
-                f'<a href="{maps_url}" target="_blank">Google Maps</a>'
+                f'<a href="{maps_url}" target="_blank" rel="noopener noreferrer">Google Maps</a>'
             )
         popup_html = (
             f"<b>{r.get('name', 'Restaurant')}</b><br>"

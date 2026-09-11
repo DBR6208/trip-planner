@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 
 import folium
+import ftfy
 import geopandas as gpd
 import pandas as pd
 import shapely.geometry
@@ -13,7 +14,7 @@ from . import geo
 from .. import config
 
 
-def _recommend_stations(
+def _recommend_stations_greedy(
     route_coords: list,
     stations: list[dict],
     start_battery: float,
@@ -189,9 +190,258 @@ def _find_stations_along_route(
             "brand": s.get("Backend_Operator", "N/A"),
             "latitude": s.geometry.y,
             "longitude": s.geometry.x,
-            "location": f"{s.get('Address', '')}, {s.get('Zip_Code', '')} {s.get('City', '')}".strip(", "),
+            "location": ftfy.fix_text(
+                f"{s.get('Address', '')}, {s.get('Zip_Code', '')} {s.get('City', '')}".strip(", ")
+            ),
         })
     return results
+
+
+# ── NEW: BFS-based optimal charging route search ──
+
+
+def _build_battery_matrix(
+    stations: list[dict],
+    start_coords: tuple[float, float],
+    end_coords: tuple[float, float],
+) -> tuple[pd.DataFrame, dict[str, dict]] | None:
+    """
+    Build a battery drop % matrix using ORS distance matrix (actual road distances).
+
+    Returns (DataFrame indexed by labels, label->station lookup dict) or None on failure.
+    """
+    locations = []
+    labels = []
+    station_map: dict[str, dict] = {}
+
+    # START
+    locations.append([start_coords[1], start_coords[0]])  # ORS wants [lon, lat]
+    labels.append("START")
+
+    # Stations
+    for i, s in enumerate(stations):
+        locations.append([s["longitude"], s["latitude"]])
+        label = f"{i}:{s['brand']}|{s['location']}"
+        labels.append(label)
+        station_map[label] = s
+
+    # DESTINATION
+    locations.append([end_coords[1], end_coords[0]])
+    labels.append("DESTINATION")
+
+    try:
+        n = len(locations)
+        result = geo.ors().distance_matrix(
+            locations=locations,
+            profile="driving-car",
+            sources=list(range(n)),
+            destinations=list(range(n)),
+            metrics=["distance"],
+            units="m",
+            validate=True,
+        )
+        df = pd.DataFrame(result["distances"], index=labels, columns=labels)
+        # Convert meters -> km -> battery drop %
+        df_km = df / 1000
+        df_drop = df_km.map(geo.battery_drop_for_distance)
+        return df_drop, station_map
+    except Exception as e:
+        print(f"ORS distance matrix failed: {e}")
+        return None
+
+
+def _bfs_search_route(
+    battery_matrix: pd.DataFrame,
+    route_geometry: list,
+    station_map: dict[str, dict],
+    reverse: bool = False,
+) -> list[dict] | None:
+    """
+    Find optimal charging route via BFS over the battery-drop graph.
+
+    Strategy:
+      1. Start at START, explore depth-by-depth (fewest stops first).
+      2. Intermediate hops must consume 30-60% battery.
+      3. Final hop to DESTINATION must consume 30-35%.
+      4. Every stop must be forward along the route.
+      5. No station visited twice.
+      6. Among equal-length paths, pick lowest penalty
+         (battery deviation + brand preference).
+
+    If no path found, constraints are relaxed gradually and search retries:
+      - Intermediate bounds widen by ±5/10% per attempt
+      - Destination bounds widen by ±5% per attempt
+      Up to 4 attempts, then returns None.
+
+    Returns list of recommended station dicts (same format as greedy fallback).
+    """
+    BRAND_PRIORITY = {"Circle K": 0, "Ionity": 1, "Fastned": 2}
+
+    start_label = "START"
+    destination_label = "DESTINATION"
+
+    route_line = shapely.geometry.LineString(route_geometry)
+    route_length = route_line.length
+
+    # --- helper functions ---
+
+    def get_value(a: str, b: str) -> float | None:
+        val = battery_matrix.loc[a, b]
+        return float(val) if not pd.isna(val) else None
+
+    def station_point(label: str):
+        if label in (start_label, destination_label):
+            return None
+        s = station_map.get(label)
+        return shapely.geometry.Point(s["longitude"], s["latitude"]) if s else None
+
+    # Precompute route positions (0 = home, route_length = destination)
+    route_positions: dict[str, float] = {
+        start_label: 0.0,
+        destination_label: route_length,
+    }
+    for label in battery_matrix.index:
+        if label in (start_label, destination_label):
+            continue
+        pt = station_point(label)
+        if pt:
+            route_positions[label] = route_line.project(pt)
+
+    def forward_check(pos_a: float, pos_b: float) -> bool:
+        """Is posB ahead of posA toward the destination?"""
+        return pos_b <= pos_a if reverse else pos_b >= pos_a
+
+    def brand_penalty(label: str) -> int:
+        if ":" not in label:
+            return 0
+        brand = label.split(":")[1].split("|")[0].strip()
+        return BRAND_PRIORITY.get(brand, 99)
+
+    def calc_penalty(path: list[str], d_min: float, d_max: float, i_min: float, i_max: float) -> float:
+        penalty = 0.0
+        for a, b in zip(path[:-1], path[1:]):
+            drop = get_value(a, b)
+            if drop is None:
+                return float("inf")
+            target = (d_min + d_max) / 2.0 if b == destination_label else (i_min + i_max) / 2.0
+            penalty += abs(drop - target) * 10  # battery deviation
+            if b != destination_label:
+                penalty += brand_penalty(b)
+        return penalty
+
+    def bfs_at_bounds(d_min: float, d_max: float, i_min: float, i_max: float, max_hops: int = 20):
+        """Run BFS with given battery bounds. Returns best path labels or None."""
+        frontier: list[tuple[list[str], set[str]]] = [([start_label], {start_label})]
+
+        for _depth in range(max_hops + 1):
+            completed: list[list[str]] = []
+            next_frontier: list[tuple[list[str], set[str]]] = []
+
+            for path, used in frontier:
+                current = path[-1]
+                c_to_dest = get_value(current, destination_label)
+                if c_to_dest is None:
+                    continue
+                cur_pos = route_positions.get(current)
+                if cur_pos is None:
+                    continue
+
+                # Directly reachable destination?
+                if d_min <= c_to_dest <= d_max:
+                    completed.append(path + [destination_label])
+                    continue
+
+                for candidate in route_positions:
+                    if candidate in used or candidate == current:
+                        continue
+                    if candidate in (start_label, destination_label):
+                        continue
+
+                    hop = get_value(current, candidate)
+                    if hop is None:
+                        continue
+                    cand_to_dest = get_value(candidate, destination_label)
+                    if cand_to_dest is None:
+                        continue
+                    cand_pos = route_positions.get(candidate)
+                    if cand_pos is None:
+                        continue
+                    if not forward_check(cur_pos, cand_pos):
+                        continue
+                    if i_min <= hop <= i_max:
+                        next_frontier.append((path + [candidate], used | {candidate}))
+
+            if completed:
+                return min(completed, key=lambda p: calc_penalty(p, d_min, d_max, i_min, i_max))
+
+            # Deduplicate frontier
+            dedup: dict[tuple, tuple[list[str], set[str]]] = {}
+            for p, u in next_frontier:
+                k = tuple(p)
+                if k not in dedup:
+                    dedup[k] = (p, u)
+            frontier = list(dedup.values())
+
+        return None
+
+    # --- graduated constraint relaxation ---
+    for attempt in range(4):
+        dest_min = max(10, 30 - attempt * 5)
+        dest_max = min(70, 35 + attempt * 5)
+        inter_min = max(10, 30 - attempt * 5)
+        inter_max = min(85, 60 + attempt * 10)
+
+        result_path = bfs_at_bounds(dest_min, dest_max, inter_min, inter_max)
+        if result_path is not None:
+            # Map labels back to station dicts
+            stations_out = []
+            for label in result_path:
+                if label in (start_label, destination_label):
+                    continue
+                s = station_map.get(label)
+                if s:
+                    stations_out.append(dict(s))
+            return stations_out
+
+    return None
+
+
+# ── Primary station recommendation: BFS first, greedy fallback ──
+
+
+def _recommend_stations(
+    route_coords: list,
+    stations: list[dict],
+    start_battery: float,
+    total_distance_km: float,
+    reverse: bool = False,
+) -> list[dict]:
+    """
+    Recommend optimal charging stops.
+    Uses BFS + ORS distance matrix. Falls back to greedy if BFS fails.
+    """
+    if not route_coords or not stations:
+        return []
+
+    # BFS path: needs start/end coords for the distance matrix
+    start_coords = (route_coords[0][1], route_coords[0][0])  # geo uses (lat, lon)
+    end_coords = (route_coords[-1][1], route_coords[-1][0])
+
+    try:
+        matrix_data = _build_battery_matrix(stations, start_coords, end_coords)
+        if matrix_data is not None:
+            battery_matrix, station_map = matrix_data
+            bfs_result = _bfs_search_route(
+                battery_matrix, route_coords, station_map, reverse=reverse,
+            )
+            if bfs_result is not None:
+                return bfs_result
+    except Exception as e:
+        print(f"BFS recommendation failed, falling back to greedy: {e}")
+
+    return _recommend_stations_greedy(
+        route_coords, stations, start_battery, total_distance_km, reverse,
+    )
 
 
 def find_route_and_stations(

@@ -84,12 +84,65 @@ def _find_nearby_parking(hotel_name: str, lat: float, lng: float) -> list[dict]:
     return parkings[:5]
 
 
+def _enrich_hotel(place: dict, center: dict, star_rating: str) -> dict | None:
+    """Build a hotel dict from a Google Places result, or None if out of range."""
+    pid = place.get("place_id")
+    loc = place.get("geometry", {}).get("location", {})
+    if not pid or loc.get("lat") is None:
+        return None
+    dist = geo.geodesic_distance(
+        center["lat"], center["lng"], loc["lat"], loc["lng"]
+    )
+    if dist > config.HOTEL_DISTANCE_LIMIT:
+        return None
+    try:
+        det = geo.gmaps().place(
+            pid, fields=["website", "formatted_address", "photo"]
+        )
+        d = det.get("result", {})
+    except Exception:
+        d = {}
+    photo_url = ""
+    if d.get("photos"):
+        ref = d["photos"][0].get("photo_reference", "")
+        if ref:
+            photo_url = (
+                "https://maps.googleapis.com/maps/api/place/photo"
+                f"?maxwidth=800&photoreference={ref}"
+                f"&key={config.GOOGLE_MAPS_API_KEY}"
+            )
+    return {
+        "name": place.get("name"),
+        "address": d.get("formatted_address", place.get("vicinity", "N/A")),
+        "latitude": loc["lat"],
+        "longitude": loc["lng"],
+        "place_id": pid,
+        "star_rating": star_rating,
+        "review_rating": place.get("rating", "N/A"),
+        "website": d.get("website"),
+        "reviews_total": place.get("user_ratings_total", 0),
+        "photo_url": photo_url,
+    }
+
+
 def find_hotels(city_name: str) -> list[dict]:
     """Find 4 and 5-star hotels near city center.
 
+    Uses two strategies in combination:
+      1. Nearby search (type=lodging) — finds ALL lodging in the area, then
+         uses price_level / rating to classify 4-5 star equivalent.
+      2. Text search fallback — for hotels Google explicitly indexes as
+         "4 star hotels in X" / "5 star hotels in X".
+
+    Both use pagination (up to 3 pages each) to avoid the 20-result-per-page cap
+    that was the root cause of missing hotels like Hotel Remarque in Osnabrück.
+    Results are deduplicated by place_id.
+
     Returns list of dicts: name, address, lat, lng, place_id,
-    star_rating, review_rating, website, reviews_total.
+    star_rating, review_rating, website, reviews_total, photo_url.
     """
+    import time
+
     try:
         geocode = geo.gmaps().geocode(f"city center of {city_name}")
         if not geocode:
@@ -101,56 +154,83 @@ def find_hotels(city_name: str) -> list[dict]:
     all_hotels = []
     seen_ids = set()
 
-    for star in [5, 4]:
-        query = f"{star} star hotels in {city_name}"
+    # ── Step 1: nearby search (comprehensive, catches every lodging) ──
+    for page in range(3):
         try:
-            result = geo.gmaps().places(
-                query=query,
-                location=center,
-                radius=config.HOTEL_SEARCH_RADIUS,
-                type="lodging",
-            )
+            params: dict = {
+                "location": center,
+                "radius": config.HOTEL_SEARCH_RADIUS,
+                "type": "lodging",
+            }
+            if page > 0:
+                params["page_token"] = page_token  # type: ignore[name-defined]
+            result = geo.gmaps().places_nearby(**params)
+
             for place in result.get("results", []):
                 pid = place.get("place_id")
-                if pid and pid not in seen_ids:
-                    loc = place.get("geometry", {}).get("location", {})
-                    if loc.get("lat") is not None:
-                        dist = geo.geodesic_distance(
-                            center["lat"], center["lng"], loc["lat"], loc["lng"]
-                        )
-                        if dist <= config.HOTEL_DISTANCE_LIMIT:
-                            try:
-                                det = geo.gmaps().place(
-                                    pid, fields=["website", "formatted_address", "photo"]
-                                )
-                                d = det.get("result", {})
-                            except Exception:
-                                d = {}
-                            # Build photo URL from first photo reference
-                            photo_url = ""
-                            if d.get("photos"):
-                                ref = d["photos"][0].get("photo_reference", "")
-                                if ref:
-                                    photo_url = (
-                                        "https://maps.googleapis.com/maps/api/place/photo"
-                                        f"?maxwidth=800&photoreference={ref}"
-                                        f"&key={config.GOOGLE_MAPS_API_KEY}"
-                                    )
-                            all_hotels.append({
-                                "name": place.get("name"),
-                                "address": d.get("formatted_address", place.get("vicinity", "N/A")),
-                                "latitude": loc["lat"],
-                                "longitude": loc["lng"],
-                                "place_id": pid,
-                                "star_rating": f"{star}-star",
-                                "review_rating": place.get("rating", "N/A"),
-                                "website": d.get("website"),
-                                "reviews_total": place.get("user_ratings_total", 0),
-                                "photo_url": photo_url,
-                            })
-                            seen_ids.add(pid)
+                if pid and pid in seen_ids:
+                    continue
+
+                # Classify quality via price_level + rating heuristics
+                pl = place.get("price_level")
+                ratings_score = place.get("rating", 0) or 0
+                reviews = place.get("user_ratings_total", 0) or 0
+
+                if pl is not None and pl >= 4:
+                    star = "5-star"
+                elif pl is not None and pl >= 3:
+                    star = "4-star"
+                elif ratings_score >= 4.5 and reviews >= 50:
+                    star = "5-star"
+                elif ratings_score >= 4.0 and reviews >= 100:
+                    star = "4-star"
+                else:
+                    continue  # not high-enough quality
+
+                hotel = _enrich_hotel(place, center, star)
+                if hotel:
+                    all_hotels.append(hotel)
+                    seen_ids.add(pid)
+
+            page_token = result.get("next_page_token")
+            if not page_token:
+                break
+            time.sleep(2)  # Google requires ~2s delay before using page_token
         except Exception:
-            continue
+            break
+
+    # ── Step 2: text-search fallback (catches explicitly classified hotels) ──
+    for star_text in ["5", "4"]:
+        query = f"{star_text} star hotels in {city_name}"
+        text_result = None
+        text_page_token = None
+        for _ in range(3):
+            try:
+                params: dict = {
+                    "query": query,
+                    "location": center,
+                    "radius": config.HOTEL_SEARCH_RADIUS,
+                    "type": "lodging",
+                }
+                if text_page_token:
+                    params["page_token"] = text_page_token
+                text_result = geo.gmaps().places(**params)
+
+                for place in text_result.get("results", []):
+                    pid = place.get("place_id")
+                    if pid and pid in seen_ids:
+                        continue
+                    hotel = _enrich_hotel(place, center, f"{star_text}-star")
+                    if hotel:
+                        all_hotels.append(hotel)
+                        seen_ids.add(pid)
+
+                text_page_token = text_result.get("next_page_token")
+                if not text_page_token:
+                    break
+                time.sleep(2)
+            except Exception:
+                break
 
     return all_hotels
 
@@ -244,11 +324,11 @@ def generate_hotel_map(
         to_links = []
         if tourist_office.get("website"):
             to_links.append(
-                f'<a href="{tourist_office["website"]}" target="_blank">Website</a>'
+                f'<a href="{tourist_office["website"]}" target="_blank" rel="noopener noreferrer">Website</a>'
             )
         to_maps = _gmaps_url(tourist_office.get("place_id", ""))
         if to_maps:
-            to_links.append(f'<a href="{to_maps}" target="_blank">Google Maps</a>')
+            to_links.append(f'<a href="{to_maps}" target="_blank" rel="noopener noreferrer">Google Maps</a>')
         if to_links:
             to_popup += " | ".join(to_links)
         folium.Marker(
@@ -275,11 +355,11 @@ def generate_hotel_map(
         links = []
         if h.get("website"):
             links.append(
-                f'<a href="{h["website"]}" target="_blank">Website</a>'
+                f'<a href="{h["website"]}" target="_blank" rel="noopener noreferrer">Website</a>'
             )
         hmaps = _gmaps_url(h.get("place_id", ""))
         if hmaps:
-            links.append(f'<a href="{hmaps}" target="_blank">Google Maps</a>')
+            links.append(f'<a href="{hmaps}" target="_blank" rel="noopener noreferrer">Google Maps</a>')
         if links:
             popup_html += " | ".join(links)
         popup_html += f'<br><small>{h.get("star_rating", "")} · {h.get("review_rating", "")} ({h.get("reviews_total", 0)})</small>'

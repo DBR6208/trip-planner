@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "./api/client";
@@ -54,7 +54,7 @@ function tabReady(id: TabId, state: FullState): boolean {
   if (id === 0) return true;
   if (id === 1) return !!state.guideData;
   if (id === 2) return !!state.selectedHotel;
-  if (id === 3) return !!state.selectedHotel;
+  if (id === 3) return true;
   if (id === 4) return !!state.selectedHotel;
   if (id === 5) return !!state.guideData && !!state.selectedHotel && !!state.itinerary;
   return false;
@@ -366,6 +366,22 @@ export default function App() {
     } catch (e) { showError(e); }
     finally { update("pdfLoading", false); }
   };
+
+  // ── Auto-recalculate route on address changes ──
+  const routeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const findRouteRef = useRef(handleFindRoute);
+  findRouteRef.current = handleFindRoute;
+
+  useEffect(() => {
+    if (routeTimerRef.current) clearTimeout(routeTimerRef.current);
+    if (!s.startAddress.trim() || !s.destAddress.trim()) return;
+    routeTimerRef.current = setTimeout(() => {
+      findRouteRef.current();
+    }, 600);
+    return () => {
+      if (routeTimerRef.current) clearTimeout(routeTimerRef.current);
+    };
+  }, [s.startAddress, s.destAddress]);
 
   // ── Render ──
   return (
@@ -812,41 +828,14 @@ export default function App() {
               <Car className="w-4 h-4" />
               EV Route Planning
             </h2>
-            {!s.selectedHotel ? (
-              <p className="text-xs text-gray-400">Select a hotel for the destination.</p>
-            ) : (
-              <>
-                <fieldset className="fieldset gap-2">
-                  <label className="text-xs font-medium text-gray-600">Starting from</label>
-                  {START_ADDRESSES.map((addr, i) => (
-                    <label
-                      key={i}
-                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs ${
-                        s.startAddressPreset === i
-                          ? "border-brand-blue bg-blue-50/60"
-                          : "border-base-300 hover:border-gray-400"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="start-address"
-                        checked={s.startAddressPreset === i}
-                        onChange={() => {
-                          set((prev) => ({
-                            ...prev,
-                            startAddressPreset: i,
-                            startAddress: addr,
-                            startAddressCustom: "",
-                          }));
-                        }}
-                        className="radio radio-sm"
-                      />
-                      <span className="truncate">{addr.split(",")[0]}</span>
-                    </label>
-                  ))}
+            <>
+              <fieldset className="fieldset gap-2">
+                <label className="text-xs font-medium text-gray-600">Starting from</label>
+                {START_ADDRESSES.map((addr, i) => (
                   <label
+                    key={i}
                     className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs ${
-                      s.startAddressPreset === -1
+                      s.startAddressPreset === i
                         ? "border-brand-blue bg-blue-50/60"
                         : "border-base-300 hover:border-gray-400"
                     }`}
@@ -854,153 +843,185 @@ export default function App() {
                     <input
                       type="radio"
                       name="start-address"
-                      checked={s.startAddressPreset === -1}
+                      checked={s.startAddressPreset === i}
                       onChange={() => {
                         set((prev) => ({
                           ...prev,
-                          startAddressPreset: -1,
-                          startAddress: prev.startAddressCustom,
+                          startAddressPreset: i,
+                          startAddress: addr,
+                          startAddressCustom: "",
                         }));
                       }}
                       className="radio radio-sm"
                     />
-                    <span>Other…</span>
+                    <span className="truncate">{addr.split(",")[0]}</span>
                   </label>
-                  {s.startAddressPreset === -1 && (
-                    <input
-                      type="text"
-                      placeholder="Enter start address"
-                      value={s.startAddressCustom}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        set((prev) => ({
-                          ...prev,
-                          startAddressCustom: v,
-                          startAddress: v,
-                        }));
-                      }}
-                      className="input w-full text-sm"
-                    />
+                ))}
+                <label
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs ${
+                    s.startAddressPreset === -1
+                      ? "border-brand-blue bg-blue-50/60"
+                      : "border-base-300 hover:border-gray-400"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="start-address"
+                    checked={s.startAddressPreset === -1}
+                    onChange={() => {
+                      set((prev) => ({
+                        ...prev,
+                        startAddressPreset: -1,
+                        startAddress: prev.startAddressCustom,
+                      }));
+                    }}
+                    className="radio radio-sm"
+                  />
+                  <span>Other…</span>
+                </label>
+                {s.startAddressPreset === -1 && (
+                  <input
+                    type="text"
+                    placeholder="Enter start address"
+                    value={s.startAddressCustom}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      set((prev) => ({
+                        ...prev,
+                        startAddressCustom: v,
+                        startAddress: v,
+                      }));
+                    }}
+                    className="input w-full text-sm"
+                  />
+                )}
+                <hr className="my-1 border-base-300" />
+                <label className="text-xs font-medium text-gray-600">Destination</label>
+                <input
+                  type="text"
+                  placeholder="Enter destination address"
+                  value={s.destAddress}
+                  onChange={(e) => update("destAddress", e.target.value)}
+                  className="input w-full text-sm"
+                />
+                {s.selectedHotel && (
+                  <p className="text-[11px] text-gray-400">
+                    Hotel &quot;{s.selectedHotel.name}&quot; selected — address pre-filled. Edit to override.
+                  </p>
+                )}
+                <label className="flex items-center gap-2 text-xs text-gray-600 mt-1">
+                  Battery %
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={s.startBattery}
+                    onChange={(e) => update("startBattery", Number(e.target.value))}
+                    className="range range-sm flex-1"
+                  />
+                  <span className="font-mono w-8 text-right">{s.startBattery}%</span>
+                </label>
+                <button
+                  onClick={handleFindRoute}
+                  disabled={!s.destAddress.trim() || !s.startAddress.trim() || s.routeLoading}
+                  className="btn btn-primary btn-sm mt-1"
+                >
+                  {s.routeLoading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Calculating…
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <Car className="w-4 h-4" />
+                      Find Route
+                    </span>
                   )}
-                  <hr className="my-1 border-base-300" />
-                  <label className="text-xs font-medium text-gray-600">Destination</label>
-                  <div className="text-xs text-gray-700 bg-gray-50 rounded-lg px-2.5 py-2 border border-gray-200 truncate">
-                    {s.destAddress || "Select a hotel first"}
+                </button>
+              </fieldset>
+
+              {s.routeInfo && (
+                <p className="text-xs text-gray-600 mt-2 font-medium">{s.routeInfo}</p>
+              )}
+
+              {/* Station selectors — checkbox per direction */}
+              {s.routeStations.length > 0 && (
+                <>
+                  <hr className="my-3 border-base-300" />
+                  <p className="text-xs font-medium text-gray-600 mb-2">
+                    Charging Stations
+                  </p>
+                  <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
+                    {s.routeStations.map((st, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg border border-base-300 text-xs"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-700 truncate">
+                            {st.brand}
+                          </div>
+                          <div className="text-gray-400 truncate">
+                            {st.location}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0 pt-0.5">
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox-xs"
+                              checked={!!s.selectedOut.find((x) => x.location === st.location)}
+                              onChange={() =>
+                                set((prev) => ({
+                                  ...prev,
+                                  selectedOut: prev.selectedOut.find((x) => x.location === st.location)
+                                    ? prev.selectedOut.filter((x) => x.location !== st.location)
+                                    : [...prev.selectedOut, st],
+                                }))
+                              }
+                            />
+                            <span className="text-[11px] text-brand-blue">Out</span>
+                          </label>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox-xs"
+                              checked={!!s.selectedHome.find((x) => x.location === st.location)}
+                              onChange={() =>
+                                set((prev) => ({
+                                  ...prev,
+                                  selectedHome: prev.selectedHome.find((x) => x.location === st.location)
+                                    ? prev.selectedHome.filter((x) => x.location !== st.location)
+                                    : [...prev.selectedHome, st],
+                                }))
+                              }
+                            />
+                            <span className="text-[11px] text-gray-500">Home</span>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <label className="flex items-center gap-2 text-xs text-gray-600 mt-1">
-                    Battery %
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={s.startBattery}
-                      onChange={(e) => update("startBattery", Number(e.target.value))}
-                      className="range range-sm flex-1"
-                    />
-                    <span className="font-mono w-8 text-right">{s.startBattery}%</span>
-                  </label>
                   <button
-                    onClick={handleFindRoute}
-                    disabled={!s.destAddress.trim() || !s.startAddress.trim() || s.routeLoading}
-                    className="btn btn-primary btn-sm mt-1"
+                    onClick={handlePlanTrip}
+                    disabled={s.selectedOut.length === 0 || s.planLoading}
+                    className="btn btn-primary btn-sm w-full mt-2"
                   >
-                    {s.routeLoading ? (
+                    {s.planLoading ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Calculating…
+                        Planning…
                       </span>
                     ) : (
                       <span className="flex items-center gap-1.5">
                         <Car className="w-4 h-4" />
-                        Find Route
+                        Plan Trip
                       </span>
                     )}
                   </button>
-                </fieldset>
-
-                {s.routeInfo && (
-                  <p className="text-xs text-gray-600 mt-2 font-medium">{s.routeInfo}</p>
-                )}
-
-                {/* Station selectors — checkbox per direction */}
-                {s.routeStations.length > 0 && (
-                  <>
-                    <hr className="my-3 border-base-300" />
-                    <p className="text-xs font-medium text-gray-600 mb-2">
-                      Charging Stations
-                    </p>
-                    <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
-                      {s.routeStations.map((st, i) => (
-                        <div
-                          key={i}
-                          className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg border border-base-300 text-xs"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-700 truncate">
-                              {st.brand}
-                            </div>
-                            <div className="text-gray-400 truncate">
-                              {st.location}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0 pt-0.5">
-                            <label className="flex items-center gap-1 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                className="checkbox checkbox-xs"
-                                checked={!!s.selectedOut.find((x) => x.location === st.location)}
-                                onChange={() =>
-                                  set((prev) => ({
-                                    ...prev,
-                                    selectedOut: prev.selectedOut.find((x) => x.location === st.location)
-                                      ? prev.selectedOut.filter((x) => x.location !== st.location)
-                                      : [...prev.selectedOut, st],
-                                  }))
-                                }
-                              />
-                              <span className="text-[11px] text-brand-blue">Out</span>
-                            </label>
-                            <label className="flex items-center gap-1 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                className="checkbox checkbox-xs"
-                                checked={!!s.selectedHome.find((x) => x.location === st.location)}
-                                onChange={() =>
-                                  set((prev) => ({
-                                    ...prev,
-                                    selectedHome: prev.selectedHome.find((x) => x.location === st.location)
-                                      ? prev.selectedHome.filter((x) => x.location !== st.location)
-                                      : [...prev.selectedHome, st],
-                                  }))
-                                }
-                              />
-                              <span className="text-[11px] text-gray-500">Home</span>
-                            </label>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      onClick={handlePlanTrip}
-                      disabled={s.selectedOut.length === 0 || s.planLoading}
-                      className="btn btn-primary btn-sm w-full mt-2"
-                    >
-                      {s.planLoading ? (
-                        <span className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Planning…
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5">
-                          <Car className="w-4 h-4" />
-                          Plan Trip
-                        </span>
-                      )}
-                    </button>
-                  </>
-                )}
-              </>
-            )}
+                </>
+              )}
+            </>
           </div>
 
           {/* Output */}

@@ -126,8 +126,8 @@ def generate_maps_url(place_id: str, place_type: str = "hotel") -> str | None:
     if place_id:
         return (
             "https://www.google.com/maps/search/?api=1"
-            "%26query=" + place_type +
-            "%26query_place_id=" + place_id
+            "&query=" + place_type +
+            "&query_place_id=" + place_id
         )
     return None
 
@@ -136,6 +136,13 @@ def remaining_battery(start_percent: float, distance_km: float) -> float:
     energy_used = (distance_km / 100) * config.CONSUMPTION_KWH_PER_100KM
     percent_used = (energy_used / config.BATTERY_CAPACITY_KWH) * 100
     return max(start_percent - percent_used, 0)
+
+
+def battery_drop_for_distance(distance_km: float) -> float:
+    """How much battery % is consumed over a given driving distance."""
+    energy_used = (distance_km / 100) * config.CONSUMPTION_KWH_PER_100KM
+    percent_used = (energy_used / config.BATTERY_CAPACITY_KWH) * 100
+    return percent_used
 
 
 def format_time_hm(hours: float) -> str:

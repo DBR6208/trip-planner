@@ -37,11 +37,11 @@ def generate_tourist_office_map(city_name: str, office: dict) -> str:
         links = []
         if office.get("website"):
             links.append(
-                f'<a href="{office["website"]}" target="_blank">Visit Website</a>'
+                f'<a href="{office["website"]}" target="_blank" rel="noopener noreferrer">Visit Website</a>'
             )
         maps_url = _generate_google_maps_url(office.get("place_id", ""))
         if maps_url:
-            links.append(f'<a href="{maps_url}" target="_blank">View on Google Maps</a>')
+            links.append(f'<a href="{maps_url}" target="_blank" rel="noopener noreferrer">View on Google Maps</a>')
         if links:
             popup_html += " | ".join(links)
 

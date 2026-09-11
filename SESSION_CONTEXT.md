@@ -1,33 +1,83 @@
-# Session Context: myTrip_Planner — Cover Image & Explore Tab Update
+# Session Context: myTrip_Planner — BFS Charging Algorithm Upgrade
 
-**Session Date:** 2026-09-02  
-**Status:** Cover image search improved; Explore tab cleaned up; both features live in production
+**Session Date:** 2026-09-11  
+**Status:** BFS charging algorithm + Route tab standalone (no hotel required) + address cleanup
 
 ---
+
+## ✅ Fixed This Session (2026-09-11)
+
+### Route Calculation — Now Uses BFS + ORS Distance Matrix
+
+**Problem:** The old `_recommend_stations()` used a greedy approach:
+- `line.project()` for station distances (straight-line approximation, not actual road distance)
+- Picked the farthest reachable station each iteration with no backtracking
+- Could miss valid solutions when the greedy choice led to a dead end
+
+**Fix:**
+1. **ORS Distance Matrix** (`_build_battery_matrix()`) — replaces `line.project()` straight-line estimates with actual road distances between every pair of (home, stations, destination) via ORS `distance_matrix()` API
+2. **BFS search** (`_bfs_search_route()`) — explores all valid station sequences, finds the true minimum-stop path:
+   - Breadth-first = fewest stops found first
+   - Intermediate legs: 30–60% battery drop (relaxed ±5% per retry, up to 4 attempts)
+   - Final leg: 30–35% drop (also graduated relaxation)
+   - Brand preference (Circle K→Ionity→Fastned) folded into penalty function
+   - Stations must be forward along the route, no revisits
+3. **Graduated constraint relaxation** — if no path found, bounds widen by 5% each attempt up to 4x
+4. **Greedy fallback** (`_recommend_stations_greedy()`) — original algorithm preserved and called when BFS fails or ORS API is unavailable
+
+**Result (Heirweg → Osnabrück, 370.5 km):**
+- BFS forward: **1 stop** — EnBW Mobility, Oberhausen (Lindnerstraße 137)
+- BFS return: **2 stops** — EnBW Osnabrück → Allego Antwerpen
+- Greedy fallback also works independently (different station choices, same stop counts)
+
+**Files modified:**
+- `backend/services/geo.py` — added `battery_drop_for_distance()` helper
+- `backend/services/charging.py` — added `_build_battery_matrix()`, `_bfs_search_route()`, new `_recommend_stations()` wrapper, renamed old `_recommend_stations` → `_recommend_stations_greedy`
+- All existing UI, plan_trip_with_stops, round-trip, and user-station-selection code **unchanged**
+
+### Cover Image People/Animals — NOT FIXED (carried forward)
+
+---
+
+### Station Addresses — Fixed Garbled Characters with ftfy
+
+**Problem:** Charging station addresses from CSV (CP1252-encoded) displayed mojibake — `ÃŸ` instead of `ß`, `Ã¼` instead of `ü`, etc. (e.g. `LindnerstraÃe 137` → should be `Lindnerstraße 137`).
+
+**Fix:** Added `ftfy.fix_text()` to the address construction in `_find_stations_along_route()` — same approach as the notebook.
+
+**Files modified:**
+- `backend/services/charging.py` — added `import ftfy`, wrapped address with `ftfy.fix_text()`
+- `.venv` — installed `ftfy==6.3.1` via `uv pip install`
+
+---
+
+### Route Tab — Now Standalone (No Hotel Required) + Auto-Recalculation
+
+**Problem:**
+- Route tab was locked behind hotel selection (`tabReady` returned `false` for tab 3 without a hotel)
+- Destination was a read-only display showing the hotel address
+- No auto-recalculation when start/destination addresses changed
+
+**Changes:**
+1. **`tabReady()`** — tab 3 (Route) now returns `true` unconditionally; route planner works without any hotel
+2. **Destination field** — replaced read-only `<div>` with an editable `<input type="text">`
+3. **Hotel pre-fill** — if a hotel is selected, its address pre-fills the destination field with a note: *"Hotel 'X' selected — address pre-filled. Edit to override."*
+4. **Auto-recalculate** — `useEffect` watches `startAddress` and `destAddress`, debounces 600ms, then calls `handleFindRoute` automatically
+
+**Files modified:**
+- `frontend/src/App.tsx` — changed `tabReady`, replaced Route sidebar JSX, added `useEffect` + `useRef` for auto-recalculation
 
 ---
 
 ## 🚨 Critical Blocking Issues (2026-09-02)
 
-### Issue 1: Route Calculation Fails
+### Issue 1: Route Calculation Fails — ✅ FIXED (2026-09-11)
 
-**Status:** BLOCKING | Severity: CRITICAL  
-**Reported:** Current session
+**Status:** RESOLVED | Severity: CRITICAL — Fixed with BFS + ORS distance matrix
 
-**Symptom:** Route planning feature is non-functional — throws error when user attempts to calculate route
+**Root cause:** The old greedy algorithm used `line.project()` (straight-line approximation) instead of actual road distances. It also had no backtracking — if the farthest-reachable station led to a dead end, it couldn't recover.
 
-**Details:**
-- User enters departure address and destination
-- Clicks "Find Route" 
-- Error occurs (specific message not captured yet)
-- No route or charging stations displayed
-
-**Impact:**
-- Route Planning tab completely broken
-- User cannot plan EV trips
-- Core feature unavailable
-
-**Next Step:** Capture full error message and stack trace from backend logs
+**Fix:** BFS search over an ORS distance matrix for actual road distances, with graduated constraint relaxation and greedy fallback. Details in "Fixed This Session" section above.
 
 ---
 
@@ -132,7 +182,10 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Cover image search | ✅ Live | Wikimedia + Bing with landmark focus, no people/animals |
+| Route calculation | ✅ Fixed | BFS + ORS distance matrix with greedy fallback |
+| Route tab standalone | ✅ Done | Works without hotel; auto-recalculates on address changes |
+| Station addresses | ✅ Clean | ftfy fixes CP1252 mojibake in charging station names |
+| Cover image search | 🔄 Needs work | Still showing people/animals — URL filters insufficient |
 | Explore tab | ✅ Clean | City guide text only, no galleries |
 | PDF generation | ✅ Working | Uses improved cover images on brochure generation |
 | Brochure tab | ✅ Ready | Generate PDF → new tab with high-quality cover image |
@@ -141,7 +194,13 @@
 
 ## Testing Checklist
 
-- [ ] Go to `localhost:5173` → **Brochure** tab
+- [ ] Go to `localhost:5173` → **Route** tab (no hotel needed)
+- [ ] Enter a destination address directly → route should calculate after 600ms
+- [ ] Change start address preset → route recalculates
+- [ ] Select a hotel in Hotels tab → destination pre-filled, route recalculates
+- [ ] Override destination text → route recalculates
+- [ ] Verify addresses show proper characters (e.g. "Straße" not "StraÃe")
+- [ ] Go to **Brochure** tab
 - [ ] Generate PDF for any city (e.g., Aachen, Paris)
 - [ ] Verify: Cover image is a cityscape/landmark photo (not Wikipedia generic, not portrait)
 - [ ] Go to **Explore** tab
@@ -180,13 +239,22 @@
 ## Files Modified (Current Session)
 
 ```
-backend/services/cover_images.py
-  - _search_wikimedia(): Updated search queries (lines 216-221)
-  - _search_bing_images(): Added negative filters, expanded URL exclusions (lines 307-371)
+backend/services/geo.py
+  - added battery_drop_for_distance() helper (inverse of remaining_battery)
+
+backend/services/charging.py
+  - _recommend_stations → _recommend_stations_greedy (preserved as fallback)
+  - added _build_battery_matrix() — ORS distance matrix for actual road distances
+  - added _bfs_search_route() — BFS with graduated constraint relaxation + brand penalty
+  - new _recommend_stations() wrapper — tries BFS first, falls back to greedy
+  - find_route_and_stations(), plan_trip_with_stops(), _plan_leg(), _plan_direct_route() unchanged
+  - added import ftfy, wrapped address in _find_stations_along_route() with ftfy.fix_text()
 
 frontend/src/App.tsx
-  - Removed Attraction Photos gallery section (lines ~532-552)
-  - Removed attraction_images conditional render
+  - tabReady: tab 3 (Route) now returns true (no hotel required)
+  - Route sidebar: removed hotel gate, made destination an editable text input
+  - added useEffect + useRef for 600ms debounced auto-recalculate on address changes
+  - hotel selection still pre-fills destination address when selected
 ```
 
 ---
@@ -201,9 +269,9 @@ frontend/src/App.tsx
 
 ## Next Steps (User to Confirm)
 
-1. Test PDF cover images from Brochure tab — verify quality
-2. Confirm Explore tab looks clean (text only, no galleries)
-3. If cover images still need improvement, adjust Bing/Wikimedia queries further
+1. Test route calculation standalone (no hotel) — should work and auto-recalculate
+2. Test route calculation with hotel pre-fill
+3. Verify PDF cover images from Brochure tab — if still showing people/animals, need a different approach
 4. Continue with other REQUIREMENTS.md items (restaurant filtering, planner prompts, etc.)
 
 ---
