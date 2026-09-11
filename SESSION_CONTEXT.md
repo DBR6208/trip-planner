@@ -1,7 +1,7 @@
 # Session Context: myTrip_Planner — BFS Charging Algorithm Upgrade
 
 **Session Date:** 2026-09-11  
-**Status:** BFS charging algorithm + Route tab standalone (no hotel required) + address cleanup
+**Status:** BFS charging algorithm + Route tab standalone + maps URL redirect fix + address cleanup
 
 ---
 
@@ -66,6 +66,19 @@
 
 **Files modified:**
 - `frontend/src/App.tsx` — changed `tabReady`, replaced Route sidebar JSX, added `useEffect` + `useRef` for auto-recalculation
+
+---
+
+### Google Maps URLs — Switched to Direct Place Link (No Firefox Redirect Warning)
+
+**Problem:** Map popup links used `https://www.google.com/maps/search/?api=1&query=hotel&query_place_id=...` format. The `api=1` parameter triggers JavaScript redirects on Google's side. Firefox's COOP enforcement flagged this redirect chain as an "unsafe connection" warning.
+
+**Fix:** Changed all three URL generators to use the direct place URL format: `https://www.google.com/maps?q=place_id:...`. No `api=1`, no `&`/`%26`, no redirect — opens the place directly.
+
+**Files modified:**
+- `backend/services/geo.py` — `generate_maps_url()` uses `f"https://www.google.com/maps?q=place_id:{place_id}"`
+- `backend/services/hotels.py` — `_gmaps_url()` same format
+- `backend/services/tourist_office.py` — `_generate_google_maps_url()` same format
 
 ---
 
@@ -185,6 +198,7 @@
 | Route calculation | ✅ Fixed | BFS + ORS distance matrix with greedy fallback |
 | Route tab standalone | ✅ Done | Works without hotel; auto-recalculates on address changes |
 | Station addresses | ✅ Clean | ftfy fixes CP1252 mojibake in charging station names |
+| Maps URL format | ✅ Fixed | Direct place link, no api=1 redirect, no Firefox warnings |
 | Cover image search | 🔄 Needs work | Still showing people/animals — URL filters insufficient |
 | Explore tab | ✅ Clean | City guide text only, no galleries |
 | PDF generation | ✅ Working | Uses improved cover images on brochure generation |
@@ -200,6 +214,8 @@
 - [ ] Select a hotel in Hotels tab → destination pre-filled, route recalculates
 - [ ] Override destination text → route recalculates
 - [ ] Verify addresses show proper characters (e.g. "Straße" not "StraÃe")
+- [ ] Click a Google Maps link in a route/hotel/restaurant popup → no Firefox warning
+- [ ] Inspect the link URL: should be `https://www.google.com/maps?q=place_id:...`
 - [ ] Go to **Brochure** tab
 - [ ] Generate PDF for any city (e.g., Aachen, Paris)
 - [ ] Verify: Cover image is a cityscape/landmark photo (not Wikipedia generic, not portrait)
@@ -255,6 +271,16 @@ frontend/src/App.tsx
   - Route sidebar: removed hotel gate, made destination an editable text input
   - added useEffect + useRef for 600ms debounced auto-recalculate on address changes
   - hotel selection still pre-fills destination address when selected
+
+backend/services/geo.py
+  - generate_maps_url(): changed to https://www.google.com/maps?q=place_id:{place_id}
+  - no more api=1 parameter, no & query separators, no redirect
+
+backend/services/hotels.py
+  - _gmaps_url(): same direct place URL format
+
+backend/services/tourist_office.py
+  - _generate_google_maps_url(): same direct place URL format
 ```
 
 ---

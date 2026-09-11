@@ -9,6 +9,11 @@ Docs read: Aachen.pdf, Bielefeld.pdf, Boulogne-sur-Mer.pdf, Köln.pdf, Dortmund.
 
 ## ✅ Recently Fixed (2026-09-02)
 
+### Google Maps URL redirect fix (2026-09-11)
+- Switched from `.../maps/search/?api=1&query=...&query_place_id=...` to `https://www.google.com/maps?q=place_id:...`
+- Fixes Firefox "unsafe connection" COOP warnings on map popups
+- Files: `geo.py`, `hotels.py`, `tourist_office.py`
+
 ### Cover Image Search Improvements
 
 **What was done:**
