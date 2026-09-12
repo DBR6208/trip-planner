@@ -4,7 +4,7 @@ import os
 import tempfile
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -155,6 +155,19 @@ class CoverImageInfo(BaseModel):
     thumb: str
     source: str
     title: str
+
+
+class BrochureMarkdownRequest(BaseModel):
+    city: str
+    country: str
+    city_guide: str
+    tourist_office: str
+    hotel: str
+    restaurants: str
+    restaurant_data: list[dict] = []
+    journey_out: str
+    journey_home: str
+    planner: str
 
 
 class CoverImagesResponse(BaseModel):
@@ -353,6 +366,116 @@ def get_cover_images(req: CoverImagesRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/cover-images/upload", response_model=CoverImageInfo)
+def upload_cover_image(file: UploadFile = File(...)):
+    """Accept a user-uploaded cover image, save to guides dir, return CoverImageInfo."""
+    try:
+        allowed_types = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+        if file.content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail=f"Unsupported image type: {file.content_type}")
+
+        guides_dir = WEEKEND_GUIDES_DIR
+        os.makedirs(guides_dir, exist_ok=True)
+
+        ext = ".jpg"
+        if file.content_type == "image/png":
+            ext = ".png"
+        elif file.content_type == "image/gif":
+            ext = ".gif"
+        elif file.content_type == "image/webp":
+            ext = ".webp"
+
+        import uuid
+        filename = f"user_cover_{uuid.uuid4().hex[:8]}{ext}"
+        filepath = os.path.join(guides_dir, filename)
+        content = file.file.read()
+        with open(filepath, "wb") as f:
+            f.write(content)
+
+        url = f"/api/pdf/cover/{filename}"
+        return CoverImageInfo(
+            url=url, thumb=url, source="Uploaded", title=file.filename or "Uploaded Image"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UrlDownloadRequest(BaseModel):
+    url: str
+    title: str = "Web Image"
+
+
+@app.post("/api/cover-images/from-url", response_model=CoverImageInfo)
+def add_cover_image_from_url(req: UrlDownloadRequest):
+    """Download an image from a URL, save to guides dir, return CoverImageInfo."""
+    try:
+        import uuid
+        import httpx
+
+        resp = httpx.get(req.url, follow_redirects=True, timeout=20, headers={
+            "User-Agent": "DBGTripPlanner/1.0 (trip planner brochure generator; dirk.brokken.6208@gmail.com)"
+        })
+        resp.raise_for_status()
+        ct = resp.headers.get("content-type", "")
+        if not ct.startswith("image/"):
+            raise HTTPException(status_code=400, detail="URL does not point to an image")
+
+        ext = ".jpg"
+        if "png" in ct:
+            ext = ".png"
+        elif "gif" in ct:
+            ext = ".gif"
+        elif "webp" in ct:
+            ext = ".webp"
+
+        guides_dir = WEEKEND_GUIDES_DIR
+        os.makedirs(guides_dir, exist_ok=True)
+
+        filename = f"user_cover_{uuid.uuid4().hex[:8]}{ext}"
+        filepath = os.path.join(guides_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(resp.content)
+
+        url = f"/api/pdf/cover/{filename}"
+        return CoverImageInfo(
+            url=url, thumb=url, source="From URL", title=req.title
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/pdf/cover/{filename}")
+def serve_cover_image(filename: str):
+    """Serve a user-uploaded cover image."""
+    filepath = os.path.join(WEEKEND_GUIDES_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Cover image not found")
+    return FileResponse(filepath)
+
+
+@app.post("/api/brochure/markdown")
+def get_brochure_markdown(req: BrochureMarkdownRequest):
+    """Assemble the brochure markdown from trip data — no PDF compilation."""
+    try:
+        data = {
+            "city_guide": req.city_guide,
+            "tourist_office": req.tourist_office,
+            "hotel": req.hotel,
+            "restaurants": req.restaurants,
+            "journey_out": req.journey_out,
+            "journey_home": req.journey_home,
+            "planner": req.planner,
+        }
+        md = pdf_svc.build_markdown(data)
+        return {"markdown": md}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/pdf")
 def generate_pdf(req: PDFRequest):
     """Generate full PDF brochure from all data."""
@@ -397,14 +520,15 @@ def generate_pdf(req: PDFRequest):
 
 
 @app.get("/api/pdf/preview/{filename}")
-def preview_pdf_base64(filename: str):
-    """Return PDF as base64 for embedding in iframe data URL."""
-    import base64
+def preview_pdf_inline(filename: str):
+    """Serve PDF for inline browser/PDF.js viewing."""
     filepath = _resolve_pdf_path(filename)
-    with open(filepath, "rb") as f:
-        pdf_bytes = f.read()
-    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-    return {"pdf_base64": pdf_b64}
+    return FileResponse(
+        filepath,
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @app.get("/api/pdf/download-attachment/{filename}")

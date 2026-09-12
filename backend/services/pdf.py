@@ -17,58 +17,50 @@ from .restaurants import CUISINE_COLORS
 
 
 def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
-    """Legacy fallback: auto-fetch a Wikimedia image. Uses cover_images module."""
-    headers = {"User-Agent": "DBGTripPlanner/1.0 (trip planner brochure generator; dirk.brokken.6208@gmail.com)"}
-    search_terms = [
-        f"{city} city skyline",
-        f"{city} cityscape landmark",
-        f"{city} cathedral aerial",
-    ]
-    for query in search_terms:
-        try:
-            params = {
-                "action": "query",
-                "list": "search",
-                "srsearch": query,
-                "srnamespace": "6",  # File namespace
-                "format": "json",
-                "srlimit": 5,
-                "srqiprofile": "classic",
-            }
-            r = httpx.get(
-                "https://commons.wikimedia.org/w/api.php",
-                params=params,
-                headers=headers,
-                timeout=10,
-            )
-            r.raise_for_status()
-            data = r.json()
-            pages = data.get("query", {}).get("search", [])
-            if not pages:
-                continue
+    """Fallback: use Tavily to find a city cover image, download it, return path."""
+    try:
+        from tavily import TavilyClient
+        from .. import config
 
-            for page in pages:
-                title = page.get("title", "")
-                if not title or "icon" in title.lower():
+        tavily_client = TavilyClient(api_key=config.TAVILY_API_KEY)
+        query = f"{city} skyline landmark cityscape architecture photography"
+        response = tavily_client.search(
+            query=query,
+            search_depth="basic",
+            max_results=5,
+            include_images=True,
+            include_answer=False,
+        )
+
+        img_urls = response.get("images", [])
+        for img_url in img_urls[:5]:
+            if not img_url.startswith("http"):
+                continue
+            try:
+                resp = httpx.get(img_url, follow_redirects=True, timeout=15, headers={
+                    "User-Agent": "DBGTripPlanner/1.0 (trip planner brochure generator; dirk.brokken.6208@gmail.com)"
+                })
+                if resp.status_code != 200:
                     continue
-                # File:Some_City_Skyline.jpg -> Some_City_Skyline.jpg
-                filename = title.replace("File:", "", 1).replace(" ", "_")
-                file_url = f"https://commons.wikimedia.org/wiki/Special:FilePath/{filename}"
-                # Follow redirects to get the actual image
-                img_resp = httpx.get(file_url, follow_redirects=True, timeout=15, headers=headers)
-                if img_resp.status_code != 200:
+                ct = resp.headers.get("content-type", "")
+                if not ct.startswith("image/"):
                     continue
-                content_type = img_resp.headers.get("content-type", "")
-                if not content_type.startswith("image/"):
-                    continue
-                ext = os.path.splitext(filename)[1] or ".jpg"
+                ext = ".jpg"
+                m = re.search(r"\.(jpe?g|png|gif|webp)(\?|$)", img_url, re.IGNORECASE)
+                if m:
+                    ext = m.group(1).lower()
+                    if ext == "jpeg":
+                        ext = ".jpg"
                 dest = os.path.join(save_dir, f"cover_city{ext}")
                 with open(dest, "wb") as f:
-                    f.write(img_resp.content)
+                    f.write(resp.content)
+                print(f"Cover image downloaded via Tavily: {img_url}")
                 return dest
-        except Exception as e:
-            print(f"Wikimedia search for '{query}' failed: {e}")
-            continue
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"Tavily cover image search for {city} failed: {e}")
+
     return None
 
 

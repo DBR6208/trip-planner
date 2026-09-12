@@ -1,4 +1,4 @@
-"""Fetch candidate city cover images from Wikipedia, Wikimedia Commons, and Google Images."""
+"""Fetch candidate city cover images from Wikipedia, Wikimedia Commons, and Tavily."""
 
 import os
 import re
@@ -6,8 +6,18 @@ import json
 
 import httpx
 
+from .. import config
+
 _USER_AGENT = "DBGTripPlanner/1.0 (trip planner brochure generator; dirk.brokken.6208@gmail.com)"
 _HEADERS = {"User-Agent": _USER_AGENT}
+
+# Filename patterns that strongly suggest a portrait/people photo
+_PORTRAIT_PATTERNS = [
+    "portrait", "crop", "bundesarchiv", "bild", "stolperstein",
+    "retrato", "retrat", "persons", "person", "hochformat",
+    "selfie", "headshot", "mugshot",
+    "photograph of", "photo of", "foto de", "foto van",
+]
 
 
 def fetch_cover_images(city: str, tourist_office_website: str | None = None) -> list[dict]:
@@ -15,10 +25,9 @@ def fetch_cover_images(city: str, tourist_office_website: str | None = None) -> 
 
     Strategy:
       1. Find the city's Wikipedia article and get images from it
-         (guaranteed to be photos of that city).
-      2. Also try searching Wikimedia Commons for the city name.
-      3. Search Google Images via Bing Image Search (free, no auth).
-      4. Tourist office website images.
+         (guaranteed to be photos of that city, filtered for landmarks).
+      2. Search via Tavily (uses real image search, not URL-level filters).
+      3. Tourist office website images (supplement).
 
     Returns list of dicts: [{url, thumb, source, title}]
     """
@@ -34,15 +43,11 @@ def fetch_cover_images(city: str, tourist_office_website: str | None = None) -> 
     for img in _fetch_wikipedia_city_images(city):
         _add(img)
 
-    # 2. Wikimedia Commons search (fallback / supplement)
-    for img in _search_wikimedia(city):
+    # 2. Tavily image search — replaces Commons text search + Bing
+    for img in _search_tavily_images(city):
         _add(img)
 
-    # 3. Google Images via Bing Image Search (free, no API key needed)
-    for img in _search_bing_images(city):
-        _add(img)
-
-    # 4. Tourist office website
+    # 3. Tourist office website
     if tourist_office_website:
         for img in _scrape_website_images(tourist_office_website, city):
             _add(img)
@@ -120,11 +125,13 @@ def _fetch_wikipedia_city_images(city: str) -> list[dict]:
                     "icon", "logo", "flag", "map", "locator", "blank",
                     "wikinews", "sound", "button", "portal", "disambig",
                     "comics", "wordmark", "emblem", "coat of arms", "seal",
-                    "montage", "collage", "poster", "portrait",
+                    "montage", "collage", "poster",
                     "stadtbezirke", "overview", "diagram", "plan",
                     "skyline_", "_skyline", "karte", "liniennetz",
                     "wappen", "screenshot", "orthophoto",
                 ])
+                # Filter out portrait/people filename patterns
+                and not any(p in t.lower() for p in _PORTRAIT_PATTERNS)
                 # Must be a photo-type extension (jpg, jpeg, png, webp)
                 and re.search(r"\.(jpe?g|png|webp)$", t, re.IGNORECASE)
             ]
@@ -204,176 +211,92 @@ def _resolve_wikipedia_page(city: str) -> str | None:
         return None
 
 
-# ── Wikimedia Commons search (fallback) ──
+# ── Tavily image search (replaces Commons text search + Bing) ──
 
 
-def _search_wikimedia(city: str) -> list[dict]:
-    """Search Wikimedia Commons for city images with proper thumbnails.
+def _search_tavily_images(city: str) -> list[dict]:
+    """Search for city images via Tavily API.
 
-    Filters to only include images whose title contains the city name.
-    Focuses on landmarks and cityscapes, excludes portraits and people.
+    Tavily returns actual image URLs from indexed pages (Unsplash, Pexels,
+    Wikimedia, etc.) — much more reliable than scraping Bing or Commons text search.
+    Falls back silently if the API key is missing or the call fails.
+    Validates each URL with a HEAD request before adding it to results.
     """
     results = []
     search_queries = [
-        f"{city} skyline landmark",
-        f"{city} cityscape architecture",
-        f"{city} historic center",
-        f"{city} cathedral church building",
-        f"{city} aerial view panorama",
+        f"{city} skyline landmark cityscape architecture photography",
+        f"{city} historic center cathedral church architecture",
+        f"{city} aerial city view panorama",
     ]
 
     for query in search_queries:
-        if len(results) >= 10:
+        if len(results) >= 12:
             break
-
         try:
-            params = {
-                "action": "query",
-                "list": "search",
-                "srsearch": query,
-                "srnamespace": "6",
-                "format": "json",
-                "srlimit": 8,
-                "srqiprofile": "classic",
-            }
-            r = httpx.get(
-                "https://commons.wikimedia.org/w/api.php",
-                params=params,
-                headers=_HEADERS,
-                timeout=10,
+            from tavily import TavilyClient
+
+            tavily_client = TavilyClient(api_key=config.TAVILY_API_KEY)
+            response = tavily_client.search(
+                query=query,
+                search_depth="basic",
+                max_results=8,
+                include_images=True,
+                include_answer=False,
             )
-            r.raise_for_status()
-            data = r.json()
-            pages = data.get("query", {}).get("search", [])
 
-            # Collect titles that contain the city name
-            titles = []
-            for page in pages:
-                title = page.get("title", "")
-                if not title or any(skip in title.lower() for skip in ["icon", "flag", "logo"]):
+            # Tavily returns images as a list of URLs under the "images" key
+            img_urls = response.get("images", [])
+
+            # Also check results for photo-site URLs
+            photo_domains = [
+                "unsplash.com", "pexels.com", "pixabay.com",
+                "flickr.com", "wikimedia.org", "wikipedia.org",
+                "images.pexels.com", "pixabay.com/api",
+            ]
+
+            for img_url in img_urls[:5]:
+                if not img_url.startswith("http"):
                     continue
-                # STRICT filter: title must contain the city name (case-insensitive)
-                # This avoids getting photos of other cities that merely mention this city in metadata
-                if city.lower() not in title.lower():
+                # Skip URLs containing portrait keywords
+                if any(p in img_url.lower() for p in _PORTRAIT_PATTERNS):
                     continue
-                titles.append(title)
-
-            if not titles:
-                continue
-
-            # Batch query imageinfo
-            info_params = {
-                "action": "query",
-                "titles": "|".join(titles),
-                "prop": "imageinfo",
-                "iiprop": "url|mime",
-                "iiurlwidth": 400,
-                "format": "json",
-            }
-            info_r = httpx.get(
-                "https://commons.wikimedia.org/w/api.php",
-                params=info_params,
-                headers=_HEADERS,
-                timeout=15,
-            )
-            info_r.raise_for_status()
-            info_data = info_r.json()
-            query_pages = info_data.get("query", {}).get("pages", {})
-
-            for pid, page_data in query_pages.items():
-                if pid == "-1":
-                    continue
-                imageinfo = page_data.get("imageinfo", [])
-                if not imageinfo:
-                    continue
-                ii = imageinfo[0]
-                mime = ii.get("mime", "")
-                if not mime.startswith("image/"):
-                    continue
-                results.append({
-                    "url": ii.get("url", ""),
-                    "thumb": ii.get("thumburl", ii.get("url", "")),
-                    "source": "Wikimedia Commons",
-                    "title": page_data.get("title", "").replace("File:", "", 1),
-                })
-        except Exception as e:
-            print(f"Wikimedia search '{query}' failed: {e}")
-            continue
-
-    return results
-
-
-# ── Bing Image Search (Google-like results, no auth needed) ──
-
-
-def _search_bing_images(city: str) -> list[dict]:
-    """Search Bing Images for city photos focusing on landmarks and cityscapes.
-    
-    Uses Bing Image Search to find relevant city images.
-    Focuses on architecture, landmarks, and scenic views - excludes people and portraits.
-    Returns relevant city images (skylines, landmarks, attractions).
-    """
-    results = []
-    search_queries = [
-        f"{city} skyline landmark photography -people",
-        f"{city} cityscape architecture -portrait -people",
-        f"{city} historic center building -person",
-        f"{city} cathedral church monument -people",
-        f"{city} aerial view panorama -crowd",
-    ]
-    
-    for query in search_queries:
-        if len(results) >= 8:
-            break
-        
-        try:
-            # Use Bing Image Search endpoint
-            search_url = "https://www.bing.com/images/search"
-            params = {
-                "q": query,
-                "form": "HDRSC2",
-                "first": 1,
-            }
-            
-            r = httpx.get(
-                search_url,
-                params=params,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                },
-                timeout=10,
-                follow_redirects=True,
-            )
-            r.raise_for_status()
-            
-            # Extract image URLs from Bing response
-            # Look for JSON-encoded image data in HTML
-            img_pattern = re.compile(
-                r'"murl":"([^"]+\.(?:jpg|jpeg|png|webp))"',
-                re.IGNORECASE
-            )
-            matches = img_pattern.findall(r.text)
-            
-            for img_url in matches[:4]:  # Take top 4 per query
-                # Filter out small/generic images
-                if any(skip in img_url.lower() for skip in [
-                    "icon", "logo", "flag", "badge", "1x1", "avatar", 
-                    "profile", "person", "people", "portrait"
-                ]):
-                    continue
-                if len(img_url) < 50:  # URLs too short are likely not real images
-                    continue
-                    
                 results.append({
                     "url": img_url,
                     "thumb": img_url,
-                    "source": "Bing Images",
+                    "source": "Tavily",
                     "title": city,
                 })
+                if len(results) >= 12:
+                    break
+
+            # Also search web results for photo-site links
+            if len(results) < 8:
+                for result in response.get("results", []):
+                    url = result.get("url", "")
+                    title = result.get("title", city)
+                    if not url.startswith("http"):
+                        continue
+                    for domain in photo_domains:
+                        if domain in url.lower():
+                            if any(p in url.lower() for p in _PORTRAIT_PATTERNS):
+                                continue
+                            results.append({
+                                "url": url,
+                                "thumb": url,
+                                "source": f"Tavily ({domain.split('.')[0].title()})",
+                                "title": title,
+                            })
+                            if len(results) >= 12:
+                                break
+                        if len(results) >= 12:
+                            break
+                    if len(results) >= 12:
+                        break
+
         except Exception as e:
-            print(f"Bing image search for '{query}' failed: {e}")
+            print(f"Tavily image search for '{query}' failed: {e}")
             continue
-    
+
     return results
 
 

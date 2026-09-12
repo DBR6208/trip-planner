@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "./api/client";
+import PDFPreview from "./components/PDFPreview";
 import type {
   CityGuideRes,
   Hotel,
@@ -95,9 +96,13 @@ interface FullState {
   pdfUrl: string;
   pdfLoading: boolean;
   markdownText: string;
+  showEditor: boolean;
+  brochureMarkdown: string;
   coverImages: import("./types/api").CoverImageInfo[];
   coverImagesLoading: boolean;
   selectedCoverImage: import("./types/api").CoverImageInfo | null;
+  coverImageCustomUrl: string;
+  coverImageUploading: boolean;
   error: string;
   showGuide: boolean;
 }
@@ -159,9 +164,13 @@ export default function App() {
     pdfUrl: "",
     pdfLoading: false,
     markdownText: "",
+    showEditor: false,
+    brochureMarkdown: "",
     coverImages: [],
     coverImagesLoading: false,
     selectedCoverImage: null,
+    coverImageCustomUrl: "",
+    coverImageUploading: false,
     error: "",
     showGuide: false,
   });
@@ -340,6 +349,74 @@ export default function App() {
     finally { update("coverImagesLoading", false); }
   };
 
+  /** Use a custom URL as the cover image: download server-side, then add to gallery. */
+  const handleAddUrlToGallery = async () => {
+    const url = s.coverImageCustomUrl.trim();
+    if (!url) return;
+    update("coverImageUploading", true);
+    try {
+      const info = await api.addCoverImageFromUrl(url);
+      // Server returns relative paths — make absolute
+      update("coverImages", [...s.coverImages, {
+        ...info,
+        url: info.url.startsWith("http") ? info.url : `${apiBase}${info.url}`,
+        thumb: info.thumb.startsWith("http") ? info.thumb : `${apiBase}${info.thumb}`,
+      }]);
+      update("coverImageCustomUrl", "");
+    } catch (e) { showError(e); }
+    finally { update("coverImageUploading", false); }
+  };
+
+  /** Upload a file and add the resulting image to the gallery. */
+  const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    update("coverImageUploading", true);
+    try {
+      const info = await api.uploadCoverImage(file);
+      // Server returns relative paths — make absolute
+      update("coverImages", [...s.coverImages, {
+        ...info,
+        url: info.url.startsWith("http") ? info.url : `${apiBase}${info.url}`,
+        thumb: info.thumb.startsWith("http") ? info.thumb : `${apiBase}${info.thumb}`,
+      }]);
+    } catch (e) { showError(e); }
+    finally {
+      update("coverImageUploading", false);
+      // Reset file input so the same file can be re-selected
+      e.target.value = "";
+    }
+  };
+
+  /** Assemble brochure markdown and show the editor. */
+  const handleShowEditor = async () => {
+    if (!s.guideData || !s.selectedHotel) return;
+    update("pdfLoading", true);
+    try {
+      const data = await api.brochureMarkdown({
+        city: s.city,
+        country: s.country || "Germany",
+        city_guide: s.guideData.city_guide,
+        tourist_office: s.guideData.tourist_office,
+        hotel: s.hotelFormatted,
+        restaurants: s.restaurantFormatted,
+        restaurant_data: s.restaurants,
+        journey_out: s.planOut?.markdown || "",
+        journey_home: s.planHome?.markdown || "",
+        planner: s.itinerary,
+      });
+      update("brochureMarkdown", data.markdown);
+      update("showEditor", true);
+      update("pdfUrl", "");
+    } catch (e) { showError(e); }
+    finally { update("pdfLoading", false); }
+  };
+
+  /** Go back from PDF preview to markdown editor. */
+  const handleBackToEditor = () => {
+    update("pdfUrl", "");
+  };
+
   const handleGeneratePDF = async () => {
     if (!s.guideData || !s.selectedHotel) return;
     update("pdfLoading", true);
@@ -359,10 +436,11 @@ export default function App() {
         cover_image: s.selectedCoverImage?.url,
         restaurant_map_html: s.restaurantMapHtml || undefined,
         hotel_photo_url: s.selectedHotel?.photo_url || undefined,
-        markdown_text: s.markdownText || undefined,
+        markdown_text: s.brochureMarkdown || undefined,
       });
-      update("pdfUrl", data.download_url);
+      update("pdfUrl", data.preview_url);
       update("markdownText", data.markdown);
+      // Don't clear showEditor — keep it visible side by side
     } catch (e) { showError(e); }
     finally { update("pdfLoading", false); }
   };
@@ -1204,8 +1282,13 @@ export default function App() {
                             src={img.thumb}
                             alt={img.title}
                             className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = "none";
+                            onError={() => {
+                              // Remove broken image from gallery
+                              update("coverImages", s.coverImages.filter(x => x.url !== img.url));
+                              // Clear selection if it was the broken one
+                              if (s.selectedCoverImage?.url === img.url) {
+                                update("selectedCoverImage", null);
+                              }
                             }}
                           />
                         </div>
@@ -1219,26 +1302,65 @@ export default function App() {
                 )}
 
                 {!s.coverImagesLoading && s.coverImages.length === 0 && (
-                  <p className="text-xs text-gray-400">Click "Find Cover Images" to search for city photos.</p>
-                )}
+                                  <p className="text-xs text-gray-400">Click &quot;Find Cover Images&quot; to search for city photos.</p>
+                                )}
 
-                {s.selectedCoverImage && (
+                                {/* ── Custom image URL input ── */}
+                                <hr className="border-base-300 my-2" />
+                                <p className="text-xs font-medium text-gray-600 mb-1">Or use your own image</p>
+                                <div className="flex gap-1">
+                                  <input
+                                    type="text"
+                                    value={s.coverImageCustomUrl}
+                                    onChange={(e) => update("coverImageCustomUrl", e.target.value)}
+                                    placeholder="Paste image URL..."
+                                    className="input input-bordered input-xs flex-1"
+                                  />
+                                  <button
+                                    onClick={handleAddUrlToGallery}
+                                    disabled={!s.coverImageCustomUrl.trim() || s.coverImageUploading}
+                                    className="btn btn-outline btn-xs"
+                                  >
+                                    Set
+                                  </button>
+                                </div>
+                                <label className="btn btn-outline btn-xs w-full mt-1 cursor-pointer">
+                                  {s.coverImageUploading ? (
+                                    <span className="flex items-center gap-1">
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      Uploading…
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1">
+                                      Upload Image
+                                    </span>
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/gif,image/webp"
+                                    onChange={handleUploadFile}
+                                    className="hidden"
+                                    disabled={s.coverImageUploading}
+                                  />
+                                </label>
+
+                                {s.selectedCoverImage && (
                   <>
                     <hr className="border-base-300 my-1" />
                     <button
-                      onClick={handleGeneratePDF}
+                      onClick={handleShowEditor}
                       disabled={s.pdfLoading}
                       className="btn btn-primary btn-sm w-full"
                     >
                       {s.pdfLoading ? (
                         <span className="flex items-center gap-2">
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          Generating PDF…
+                          Assembling…
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5">
                           <FileText className="w-4 h-4" />
-                          Generate PDF
+                          Edit Brochure
                         </span>
                       )}
                     </button>
@@ -1280,48 +1402,91 @@ export default function App() {
                   Generate a weekend itinerary first, then pick a cover image and export as a polished PDF brochure.
                 </p>
               </div>
-            ) : s.selectedCoverImage ? (
-              <>
-                {!s.pdfUrl && s.selectedCoverImage && (
+            ) : s.showEditor ? (
+              <div className={s.pdfUrl ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
+                {/* Editor — always visible when showEditor */}
+                <div>
                   <div className="panel p-4">
-                    <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-                      <Image className="w-4 h-4" />
-                      Cover Image Preview
-                    </h2>
-                    <div className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
-                      <img
-                        src={s.selectedCoverImage.url}
-                        alt={s.selectedCoverImage.title}
-                        className="w-full object-contain"
-                        style={{ maxHeight: "400px" }}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                          (e.target as HTMLImageElement).parentElement!.innerText = "Image could not be loaded.";
-                        }}
-                      />
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-sm font-semibold text-brand-blue flex items-center gap-1.5">
+                        <FileText className="w-4 h-4" />
+                        Edit Brochure — {cap(s.city)}
+                      </h2>
+                      {!s.pdfUrl && (
+                        <button
+                          onClick={() => update("showEditor", false)}
+                          className="btn btn-ghost btn-xs"
+                        >
+                          Cancel
+                        </button>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {s.selectedCoverImage.title} &middot; {s.selectedCoverImage.source}
-                    </p>
+                    <textarea
+                      value={s.brochureMarkdown}
+                      onChange={(e) => update("brochureMarkdown", e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono leading-relaxed resize-y"
+                      style={{ minHeight: s.pdfUrl ? "500px" : "400px", maxHeight: "700px" }}
+                    />
+                    <div className="flex items-center justify-end gap-2 mt-3">
+                      <button
+                        onClick={handleGeneratePDF}
+                        disabled={s.pdfLoading}
+                        className="btn btn-primary btn-sm gap-1.5"
+                      >
+                        {s.pdfLoading ? (
+                          <span className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Generating PDF…
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5">
+                            <FileText className="w-4 h-4" />
+                            {s.pdfUrl ? "Regenerate PDF" : "Generate PDF"}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                )}
+                </div>
+
+                {/* PDF preview — appears on the right once generated */}
                 {s.pdfUrl && (
-                  <div className="panel p-4">
-                    <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
-                      <FileText className="w-4 h-4" />
-                      Brochure — {cap(s.city)}
-                    </h2>
-                    <div className="rounded-lg overflow-hidden border border-gray-200">
-                      <iframe
-                        src={`${apiBase}${s.pdfUrl}`}
-                        title="PDF Preview"
-                        className="w-full"
-                        style={{ height: "600px", border: "none" }}
-                      />
-                    </div>
+                  <div>
+                    <PDFPreview
+                      pdfUrl={`${apiBase}${s.pdfUrl}`}
+                      onDownload={() => {
+                        const a = document.createElement("a");
+                        a.href = `${apiBase}${s.pdfUrl}`;
+                        a.download = `brochure_${s.city}.pdf`;
+                        a.click();
+                      }}
+                      onBack={() => update("pdfUrl", "")}
+                    />
                   </div>
                 )}
-              </>
+              </div>
+            ) : s.selectedCoverImage ? (
+              <div className="panel p-4">
+                <h2 className="text-sm font-semibold text-brand-blue mb-3 flex items-center gap-1.5">
+                  <Image className="w-4 h-4" />
+                  Cover Image Preview
+                </h2>
+                <div className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
+                  <img
+                    src={s.selectedCoverImage.url}
+                    alt={s.selectedCoverImage.title}
+                    className="w-full object-contain"
+                    style={{ maxHeight: "400px" }}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                      (e.target as HTMLImageElement).parentElement!.innerText = "Image could not be loaded.";
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {s.selectedCoverImage.title} &middot; {s.selectedCoverImage.source}
+                </p>
+              </div>
             ) : (
               <div className="panel p-8 text-center">
                 <FileText className="w-14 h-14 mx-auto mb-4 text-brand-blue/30" />
@@ -1332,7 +1497,7 @@ export default function App() {
                 </div>
                 <h3 className="text-lg font-semibold text-brand-blue mb-1">Select a Cover Image</h3>
                 <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
-                  Use the sidebar to search for representative city photos. Click one to select it, then generate your PDF brochure.
+                  Use the sidebar to search for representative city photos. Click one to select it, then edit your brochure.
                 </p>
               </div>
             )}

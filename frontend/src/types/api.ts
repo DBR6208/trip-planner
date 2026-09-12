@@ -177,6 +177,19 @@ export interface CoverImagesRes {
   images: CoverImageInfo[];
 }
 
+export interface BrochureMarkdownReq {
+  city: string;
+  country: string;
+  city_guide: string;
+  tourist_office: string;
+  hotel: string;
+  restaurants: string;
+  restaurant_data: Restaurant[];
+  journey_out: string;
+  journey_home: string;
+  planner: string;
+}
+
 export const ALLOWED_CUISINES = [
   "Local",
   "Italian",

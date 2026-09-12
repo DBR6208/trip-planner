@@ -77,4 +77,30 @@ export const api = {
       city,
       tourist_office_website,
     }),
+
+  /** Upload a user-selected cover image file; returns CoverImageInfo to add to gallery. */
+  uploadCoverImage: async (file: File): Promise<import("../types/api").CoverImageInfo> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/api/cover-images/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `Upload failed: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  /** Download an image from a URL, save server-side, return CoverImageInfo. */
+  addCoverImageFromUrl: (url: string, title?: string) =>
+    request<import("../types/api").CoverImageInfo>("/api/cover-images/from-url", {
+      url,
+      title: title || "Web Image",
+    }),
+
+  /** Assemble brochure markdown from trip data (no PDF compilation). */
+  brochureMarkdown: (req: import("../types/api").BrochureMarkdownReq) =>
+    request<{ markdown: string }>("/api/brochure/markdown", req),
 };

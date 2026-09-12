@@ -1,193 +1,78 @@
-# Session Context: myTrip_Planner — BFS Charging Algorithm Upgrade
+# Session Context: myTrip_Planner — Cover Image Overhaul (Tavily + User Upload)
 
-**Session Date:** 2026-09-11  
-**Status:** BFS charging algorithm + Route tab standalone + maps URL redirect fix + address cleanup
+**Session Date:** 2026-09-12  
+**Status:** Cover image sources replaced: Wikipedia filter improved, Tavily replaces Commons/Bing, user upload/URL input added
 
 ---
 
-## ✅ Fixed This Session (2026-09-11)
+## ✅ Fixed This Session (2026-09-12)
 
-### Route Calculation — Now Uses BFS + ORS Distance Matrix
+### Cover Image Source Overhaul
 
-**Problem:** The old `_recommend_stations()` used a greedy approach:
-- `line.project()` for station distances (straight-line approximation, not actual road distance)
-- Picked the farthest reachable station each iteration with no backtracking
-- Could miss valid solutions when the greedy choice led to a dead end
+**Problem:** Bing Image Search and Wikimedia Commons text search returned images with people/animals — URL-level keyword filters couldn't catch them (e.g. Osnabrück Wikipedia article had 0/5 usable images, all portraits). The Commons API also rate-limits aggressively (403 after a few queries).
 
-**Fix:**
-1. **ORS Distance Matrix** (`_build_battery_matrix()`) — replaces `line.project()` straight-line estimates with actual road distances between every pair of (home, stations, destination) via ORS `distance_matrix()` API
-2. **BFS search** (`_bfs_search_route()`) — explores all valid station sequences, finds the true minimum-stop path:
-   - Breadth-first = fewest stops found first
-   - Intermediate legs: 30–60% battery drop (relaxed ±5% per retry, up to 4 attempts)
-   - Final leg: 30–35% drop (also graduated relaxation)
-   - Brand preference (Circle K→Ionity→Fastned) folded into penalty function
-   - Stations must be forward along the route, no revisits
-3. **Graduated constraint relaxation** — if no path found, bounds widen by 5% each attempt up to 4x
-4. **Greedy fallback** (`_recommend_stations_greedy()`) — original algorithm preserved and called when BFS fails or ORS API is unavailable
+**Solution — three changes:**
 
-**Result (Heirweg → Osnabrück, 370.5 km):**
-- BFS forward: **1 stop** — EnBW Mobility, Oberhausen (Lindnerstraße 137)
-- BFS return: **2 stops** — EnBW Osnabrück → Allego Antwerpen
-- Greedy fallback also works independently (different station choices, same stop counts)
+1. **Wikipedia article image filter expanded** — added `_PORTRAIT_PATTERNS` list catching filename patterns like `crop`, `bundesarchiv`, `bild`, `stolperstein`, `retrato`, `hochformat`, `selfie`, `headshot`, etc. These patterns are checked in addition to the existing skip list.
+
+2. **Bing Image Search and Wikimedia Commons text search removed** — both replaced by `_search_tavily_images()` which uses Tavily `search()` with `include_images=True`. Tavily returns direct image URLs from indexed photo sites (Unsplash, Pexels, Pixabay, Flickr, Wikimedia). Tavily was already configured and used elsewhere in the app.
+
+3. **PDF fallback updated** — `_fetch_city_cover_image()` in pdf.py now uses Tavily instead of the broken Commons text search.
+
+### Human-in-the-Loop: Custom Cover Image Input
+
+**Added two ways for users to provide their own cover image:**
+
+1. **URL input field** — paste any image URL directly
+2. **File upload** — upload JPEG/PNG/GIF/WebP from local machine
+
+Both set add the image to the gallery so the user clicks it to select.
+
+**Backend:**
+- New endpoint `POST /api/cover-images/upload` — accepts multipart file, returns CoverImageInfo
+- New endpoint `POST /api/cover-images/from-url` — downloads URL server-side, saves, returns CoverImageInfo
+- New endpoint `GET /api/pdf/cover/{filename}` — serves uploaded images
+
+**Frontend:**
+- Text input + "Set" button for URL, File input for upload
+- Both add to the gallery (coverImages list), user clicks to select
+
+### Brochure Editor with Side-by-Side PDF Preview
+
+**Problem:** The old PDF flow was: select cover → Generate PDF → iframe preview (unreliable). No way to edit the markdown before compilation.
+
+**Solution — four changes:**
+
+1. **New endpoint `POST /api/brochure/markdown`** — takes trip data, runs `build_markdown()` only (no pandoc), returns the markdown string instantly.
+
+2. **PDF preview via PDF.js** — replaced the old base64 iframe approach with a proper PDF.js canvas renderer. The preview endpoint now serves the PDF as `FileResponse(media_type="application/pdf", Content-Disposition: inline)` instead of base64 data URL.
+
+3. **Side-by-side layout** — when a PDF is generated, the output area switches to a 2-column grid: editor on the left, PDF.js preview on the right. User edits markdown, clicks "Regenerate PDF", and the preview updates immediately.
+
+4. **Edits preserved across preview cycles** — the editor stays visible at all times. `brochureMarkdown` state is never cleared, so going back from preview to editor keeps all changes.
 
 **Files modified:**
-- `backend/services/geo.py` — added `battery_drop_for_distance()` helper
-- `backend/services/charging.py` — added `_build_battery_matrix()`, `_bfs_search_route()`, new `_recommend_stations()` wrapper, renamed old `_recommend_stations` → `_recommend_stations_greedy`
-- All existing UI, plan_trip_with_stops, round-trip, and user-station-selection code **unchanged**
+- `backend/main.py` — added `BrochureMarkdownRequest`, `POST /api/brochure/markdown`, changed preview endpoint to serve PDF inline
+- `frontend/src/components/PDFPreview.tsx` — NEW: PDF.js canvas renderer with page nav
+- `frontend/src/App.tsx` — added `showEditor`, `brochureMarkdown` state; side-by-side editor+preview layout; new handlers `handleShowEditor`, `handleBackToEditor`
+- `frontend/src/api/client.ts` — added `brochureMarkdown()` API call
+- `frontend/src/types/api.ts` — added `BrochureMarkdownReq` type
+- `frontend` — added `pdfjs-dist` npm dependency
 
-### Cover Image People/Animals — NOT FIXED (carried forward)
+### Investigated Rejected Approaches
 
----
-
-### Station Addresses — Fixed Garbled Characters with ftfy
-
-**Problem:** Charging station addresses from CSV (CP1252-encoded) displayed mojibake — `ÃŸ` instead of `ß`, `Ã¼` instead of `ü`, etc. (e.g. `LindnerstraÃe 137` → should be `Lindnerstraße 137`).
-
-**Fix:** Added `ftfy.fix_text()` to the address construction in `_find_stations_along_route()` — same approach as the notebook.
-
-**Files modified:**
-- `backend/services/charging.py` — added `import ftfy`, wrapped address with `ftfy.fix_text()`
-- `.venv` — installed `ftfy==6.3.1` via `uv pip install`
-
----
-
-### Route Tab — Now Standalone (No Hotel Required) + Auto-Recalculation
-
-**Problem:**
-- Route tab was locked behind hotel selection (`tabReady` returned `false` for tab 3 without a hotel)
-- Destination was a read-only display showing the hotel address
-- No auto-recalculation when start/destination addresses changed
-
-**Changes:**
-1. **`tabReady()`** — tab 3 (Route) now returns `true` unconditionally; route planner works without any hotel
-2. **Destination field** — replaced read-only `<div>` with an editable `<input type="text">`
-3. **Hotel pre-fill** — if a hotel is selected, its address pre-fills the destination field with a note: *"Hotel 'X' selected — address pre-filled. Edit to override."*
-4. **Auto-recalculate** — `useEffect` watches `startAddress` and `destAddress`, debounces 600ms, then calls `handleFindRoute` automatically
+| Approach | Result |
+|----------|--------|
+| Overpass/OSM image query (Poi_imf.py) | **Rejected** — unreliable hosts (Flickr, Google Photos, S3, hotel sites), wrong subject matter (abstract sculptures, Stolpersteine) |
+| Commons Category search | **Rejected** — Wikimedia rate-limits aggressively (403 errors), category name matching is fragile |
+| Wikipedia article images | **Kept + improved** — works well for most cities, now with better portrait filtering |
 
 **Files modified:**
-- `frontend/src/App.tsx` — changed `tabReady`, replaced Route sidebar JSX, added `useEffect` + `useRef` for auto-recalculation
-
----
-
-### Google Maps URLs — Switched to Direct Place Link (No Firefox Redirect Warning)
-
-**Problem:** Map popup links used `https://www.google.com/maps/search/?api=1&query=hotel&query_place_id=...` format. The `api=1` parameter triggers JavaScript redirects on Google's side. Firefox's COOP enforcement flagged this redirect chain as an "unsafe connection" warning.
-
-**Fix:** Changed all three URL generators to use the direct place URL format: `https://www.google.com/maps?q=place_id:...`. No `api=1`, no `&`/`%26`, no redirect — opens the place directly.
-
-**Files modified:**
-- `backend/services/geo.py` — `generate_maps_url()` uses `f"https://www.google.com/maps?q=place_id:{place_id}"`
-- `backend/services/hotels.py` — `_gmaps_url()` same format
-- `backend/services/tourist_office.py` — `_generate_google_maps_url()` same format
-
----
-
-## 🚨 Critical Blocking Issues (2026-09-02)
-
-### Issue 1: Route Calculation Fails — ✅ FIXED (2026-09-11)
-
-**Status:** RESOLVED | Severity: CRITICAL — Fixed with BFS + ORS distance matrix
-
-**Root cause:** The old greedy algorithm used `line.project()` (straight-line approximation) instead of actual road distances. It also had no backtracking — if the farthest-reachable station led to a dead end, it couldn't recover.
-
-**Fix:** BFS search over an ORS distance matrix for actual road distances, with graduated constraint relaxation and greedy fallback. Details in "Fixed This Session" section above.
-
----
-
-### Issue 2: Cover Images Show People/Animals (Filters Failed)
-
-**Status:** BLOCKING | Severity: CRITICAL  
-**Reported:** Current session
-
-**Symptom:** Cover images in PDF brochures display people, animals, and other unwanted content
-
-**Details:**
-- Previous session: Implemented Bing negative filters (`-people`, `-portrait`, `-person`, `-crowd`)
-- Current session: User reports all images are "completely useless" — still showing people/animals
-- URL-level keyword filtering (`"person"`, `"people"`, `"portrait"`) NOT working
-- Wikimedia and Bing search results are wrong
-
-**Root Cause Analysis Needed:**
-- Bing Image Search negative operators may not work or are ignored
-- URL strings don't contain keywords even if images show people
-- Wikimedia queries too broad
-- No content-level filtering (can only filter URLs, not image content)
-
-**Impact:**
-- PDF brochures have unprofessional cover images
-- Not suitable for distribution
-- Breaks user's quality standards
-
-**Possible Approaches (to investigate):**
-1. Switch to curated APIs: Unsplash, Pexels, Pixabay (have filtering options)
-2. Google Custom Search with image type/licensing filters
-3. Vision model to validate downloaded images before use
-4. Manual curation of city → good-image-URL mapping
-5. Use architecture/design photo databases (ArchDaily, Flickr with tags)
-
-**Next Step:** DO NOT CODE — investigate which image source will work
-
----
-
-### Cover Image Search Enhancement for PDF Brochures
-
-**Problem:**
-- Cover images in PDFs were using Wikipedia generic photos (low quality, not relevant)
-- No proper filtering for people/portraits/animals
-- User requested better quality cityscape and landmark photos
-
-**Solution Implemented:**
-
-1. **Wikimedia Commons search queries** — now focus on specific landmark types:
-   - `"{city} skyline landmark"`
-   - `"{city} cityscape architecture"`
-   - `"{city} historic center"`
-   - `"{city} cathedral church building"`
-   - `"{city} aerial view panorama"`
-
-2. **Bing Images search queries** — added negative filters to exclude people/portraits:
-   - `"{city} skyline landmark photography -people"`
-   - `"{city} cityscape architecture -portrait -people"`
-   - `"{city} historic center building -person"`
-   - `"{city} cathedral church monument -people"`
-   - `"{city} aerial view panorama -crowd"`
-
-3. **URL-level exclusion filters** — skip images with keywords:
-   - `"avatar"`, `"profile"`, `"person"`, `"people"`, `"portrait"` (in addition to existing filters)
-
-**Result:**
-- Cover images now feature high-quality architectural and scenic photos
-- Tavily + Bing Images working together for better quality than Wikipedia alone
-- No portraits, people, or animals in cover photos
-- Photos are relevant to the city's landmarks and attractions
-
-**Files Modified:**
-- `backend/services/cover_images.py`
-  - `_search_wikimedia()`: Updated 5 search queries with landmark/architecture focus
-  - `_search_bing_images()`: Added negative filters and expanded exclude list
-
-### Explore Tab Cleanup — Removed Attraction Photos Gallery
-
-**Problem:**
-- Explore tab was showing a 2-column gallery of "Attraction Photos" 
-- Gallery displayed links to Google Images search (not actual images)
-- Cluttered the UI; users wanted just the city guide text
-
-**Solution Implemented:**
-
-- Removed entire "Attraction Photos" section from Explore tab rendering
-- Explore tab now shows only the city guide markdown (clean, focused)
-- No pictures, galleries, or links in the Explore tab
-
-**Files Modified:**
-- `frontend/src/App.tsx`
-  - Removed attractions gallery grid section (lines ~532-552)
-  - Kept city guide markdown display only
-
-**Build Status:**
-- Frontend: ✓ Built successfully (npm run build)
-- Backend: ✓ Python syntax OK
-- Both servers: ✓ Running (frontend:5173, backend:8000)
+- `backend/services/cover_images.py` — added `_PORTRAIT_PATTERNS`, replaced `_search_wikimedia`/`_search_bing_images` with `_search_tavily_images()`, updated imports
+- `backend/services/pdf.py` — replaced `_fetch_city_cover_image()` Commons text search with Tavily-based fallback
+- `backend/main.py` — added `POST /api/cover-images/upload` and `GET /api/pdf/cover/{filename}` endpoints
+- `frontend/src/api/client.ts` — added `uploadCoverImage()` API call
+- `frontend/src/App.tsx` — added custom URL input, file upload UI, handler functions, state fields
 
 ---
 
@@ -197,108 +82,51 @@
 |---------|--------|-------|
 | Route calculation | ✅ Fixed | BFS + ORS distance matrix with greedy fallback |
 | Route tab standalone | ✅ Done | Works without hotel; auto-recalculates on address changes |
-| Station addresses | ✅ Clean | ftfy fixes CP1252 mojibake in charging station names |
-| Maps URL format | ✅ Fixed | Direct place link, no api=1 redirect, no Firefox warnings |
-| Cover image search | 🔄 Needs work | Still showing people/animals — URL filters insufficient |
+| Station addresses | ✅ Clean | ftfy fixes CP1252 mojibake |
+| Maps URL format | ✅ Fixed | Direct place link, no api=1 redirect |
+| Cover image search | ✅ Tavily-based | Wikipedia filtered + Tavily replaces Commons/Bing |
+| User cover image upload | ✅ Added | URL input + file upload in brochure sidebar |
 | Explore tab | ✅ Clean | City guide text only, no galleries |
-| PDF generation | ✅ Working | Uses improved cover images on brochure generation |
-| Brochure tab | ✅ Ready | Generate PDF → new tab with high-quality cover image |
+| PDF generation | ✅ Working | Uses improved cover image pipeline |
 
 ---
 
 ## Testing Checklist
 
-- [ ] Go to `localhost:5173` → **Route** tab (no hotel needed)
-- [ ] Enter a destination address directly → route should calculate after 600ms
-- [ ] Change start address preset → route recalculates
-- [ ] Select a hotel in Hotels tab → destination pre-filled, route recalculates
-- [ ] Override destination text → route recalculates
-- [ ] Verify addresses show proper characters (e.g. "Straße" not "StraÃe")
-- [ ] Click a Google Maps link in a route/hotel/restaurant popup → no Firefox warning
-- [ ] Inspect the link URL: should be `https://www.google.com/maps?q=place_id:...`
-- [ ] Go to **Brochure** tab
-- [ ] Generate PDF for any city (e.g., Aachen, Paris)
-- [ ] Verify: Cover image is a cityscape/landmark photo (not Wikipedia generic, not portrait)
-- [ ] Go to **Explore** tab
-- [ ] Enter city (e.g., Aachen)
-- [ ] Click "Explore City"
-- [ ] Verify: Only city guide text is shown (no pictures, no gallery)
-
----
-
-## Historical Context (Prior Session)
-
-### Previous Session Work (Compaction 3)
-
-1. **EV Charging Algorithm Fixes** (2026-09-02 16:45 UTC)
-   - Fixed route distance miscalculation (532km → 380km)
-   - Improved station sorting (distance-first, not brand-first)
-   - Added used_stations tracking to prevent duplicates
-   - Increased search buffer (2km → 5km)
-   - Added special return-trip low-battery logic
-   - Result: Leuvenssteenweg → Osnabrück now recommends correct stops
-
-2. **Brochure Workflow Redesign** 
-   - Consolidated 3-phase → 1-phase "Generate PDF" flow
-   - PDF returns in new tab (not embedded iframe)
-   - Markdown editor responsive with CodeMirror
-   - PDF compression via Ghostscript on download
-   - Frontend state management cleaned up
-
-3. **Attraction Images (Abandoned in Current Session)**
-   - Added Tavily search for attraction images (replaced with cover images later)
-   - Removed from Explore tab to reduce clutter
-   - Decision: Focus on cover image quality instead of gallery display
+- [ ] Go to Brochure tab → click "Find Cover Images" → verify images are from Wikipedia + Tavily
+- [ ] Verify no portrait/people photos in results (check Osnabrück specifically)
+- [ ] Paste an image URL → click "Set" → verify it selects as cover image
+- [ ] Upload an image file → verify it uploads and selects
+- [ ] Generate PDF with custom/uploaded image → verify it appears on cover
+- [ ] Backend: verify Tavily API key is configured in .env
+- [ ] Verify the old Bing/Commons search code is completely removed
 
 ---
 
 ## Files Modified (Current Session)
 
 ```
-backend/services/geo.py
-  - added battery_drop_for_distance() helper (inverse of remaining_battery)
+backend/services/cover_images.py
+  - Added _PORTRAIT_PATTERNS list (populated with filename patterns)
+  - Updated fetch_cover_images() strategy (drop Commons/Bing, add Tavily)
+  - Added _search_tavily_images() replacing _search_wikimedia() and _search_bing_images()
+  - Added from .. import config, import tempfile
 
-backend/services/charging.py
-  - _recommend_stations → _recommend_stations_greedy (preserved as fallback)
-  - added _build_battery_matrix() — ORS distance matrix for actual road distances
-  - added _bfs_search_route() — BFS with graduated constraint relaxation + brand penalty
-  - new _recommend_stations() wrapper — tries BFS first, falls back to greedy
-  - find_route_and_stations(), plan_trip_with_stops(), _plan_leg(), _plan_direct_route() unchanged
-  - added import ftfy, wrapped address in _find_stations_along_route() with ftfy.fix_text()
+backend/services/pdf.py
+  - Rewrote _fetch_city_cover_image() to use Tavily instead of Commons text search
+
+backend/main.py
+  - Added POST /api/cover-images/upload endpoint
+  - Added GET /api/pdf/cover/{filename} endpoint
+
+frontend/src/api/client.ts
+  - Added uploadCoverImage() multipart upload function
 
 frontend/src/App.tsx
-  - tabReady: tab 3 (Route) now returns true (no hotel required)
-  - Route sidebar: removed hotel gate, made destination an editable text input
-  - added useEffect + useRef for 600ms debounced auto-recalculate on address changes
-  - hotel selection still pre-fills destination address when selected
-
-backend/services/geo.py
-  - generate_maps_url(): changed to https://www.google.com/maps?q=place_id:{place_id}
-  - no more api=1 parameter, no & query separators, no redirect
-
-backend/services/hotels.py
-  - _gmaps_url(): same direct place URL format
-
-backend/services/tourist_office.py
-  - _generate_google_maps_url(): same direct place URL format
+  - Added coverImageCustomUrl, coverImageUploading to state
+  - Added handleSetCustomUrl(), handleUploadFile() handlers
+  - Added URL input + file upload UI in brochure sidebar
 ```
-
----
-
-## Known Non-Issues (User Clarified)
-
-- User: "I do not want pictures or portraits of people animals, only that pictures that are relevant to the top attractions"
-- **Resolution:** Cover images now use architecture/landmark focus with people/animal filtering
-- **Explore tab:** No pictures at all (clean text-only display of city guide)
-
----
-
-## Next Steps (User to Confirm)
-
-1. Test route calculation standalone (no hotel) — should work and auto-recalculate
-2. Test route calculation with hotel pre-fill
-3. Verify PDF cover images from Brochure tab — if still showing people/animals, need a different approach
-4. Continue with other REQUIREMENTS.md items (restaurant filtering, planner prompts, etc.)
 
 ---
 
