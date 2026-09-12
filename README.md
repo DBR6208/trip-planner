@@ -40,12 +40,23 @@ A weekend trip planner web application that generates branded PDF travel brochur
 
 ### Backend
 
+**Linux/macOS:**
 ```bash
 # From the project root
 python3 -m venv .venv
 source .venv/bin/activate
 uv pip install -r backend/requirements.txt
 ```
+
+**Windows (PowerShell):**
+```powershell
+# From the project root
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+uv pip install -r backend/requirements.txt
+```
+
+If `uv` is not available, use `pip` instead of `uv pip` — it's slower but works.
 
 Create a `.env` file in the project root with your API keys:
 
