@@ -87,7 +87,15 @@ Both set add the image to the gallery so the user clicks it to select.
 | Cover image search | ✅ Tavily-based | Wikipedia filtered + Tavily replaces Commons/Bing |
 | User cover image upload | ✅ Added | URL input + file upload in brochure sidebar |
 | Explore tab | ✅ Clean | City guide text only, no galleries |
-| PDF generation | ✅ Working | Uses improved cover image pipeline |
+| PDF generation | ✅ Working | Tavily fallback + inline PDF.js preview |
+| Brochure editor | ✅ Basic | Textarea editor + side-by-side PDF.js preview, edits preserved |
+| Brochure code editor | ⏳ TODO | Replace textarea with CodeMirror (syntax highlighting, line numbers) |
+
+---
+
+## Known Remaining Work (Carried Forward)
+
+- **Replace textarea with CodeMirror** — The Gradio notebook (`myTripPlanner_V08.ipynb`) used `gr.Code(language="markdown")` which is a CodeMirror editor with syntax highlighting and line numbers. The current React app uses a plain `<textarea>`. Install `@codemirror/lang-markdown` and `@codemirror/view` and create a proper editor component. (Not done yet — user will test on Windows first)
 
 ---
 
