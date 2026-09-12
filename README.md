@@ -36,27 +36,25 @@ A weekend trip planner web application that generates branded PDF travel brochur
 
 - Python 3.11+
 - Node.js 18+
-- LaTeX installation (for PDF generation: `texlive-xetex`, `texlive-latex-extra`)
+- LaTeX installation (for PDF generation: `texlive-xetex`, `texlive-latex-extra`, `pandoc`)
 
 ### Backend
 
 ```bash
-cd backend
-uv venv
+# From the project root
+python3 -m venv .venv
 source .venv/bin/activate
-uv pip install -r requirements.txt
+uv pip install -r backend/requirements.txt
 ```
 
 Create a `.env` file in the project root with your API keys:
 
 ```env
-OPENROUTER_API_KEY=...          # LLM provider (default model: openai/gpt-4o)
-TAVILY_API_KEY=...              # Web search context
+OPENROUTER_API_KEY=...          # LLM provider (default model: openai/gpt-4o-mini)
+TAVILY_API_KEY=...              # Web search + cover image search
 ORS_API_KEY=...                 # OpenRouteService — routing & directions
 GOOGLE_MAPS_API_KEY=...         # Places, hotel & restaurant details
 ```
-
-The LLM routes through OpenRouter using `openai/gpt-4o` by default. You can change the model by setting `OPENROUTER_MODEL` in `.env`. If `OPENROUTER_API_KEY` is not set, it falls back to `OPENAI_API_KEY`.
 
 Then start the server:
 
@@ -81,6 +79,8 @@ PDFs are produced server-side via LaTeX (pandoc + xelatex). Ensure you have the 
 ```bash
 sudo apt install texlive-xetex texlive-latex-extra pandoc
 ```
+
+Additional: `fonts-font-awesome` for icons in PDFs. The PDF template also requires Ghostscript for compression (`gs`).
 
 ## Usage
 
