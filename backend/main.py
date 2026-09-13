@@ -135,6 +135,7 @@ class PDFRequest(BaseModel):
     tourist_office: str
     hotel: str
     restaurants: str
+    hotel_data: dict | None = None
     restaurant_data: list[dict] = []
     journey_out: str
     journey_home: str
@@ -480,12 +481,18 @@ def get_brochure_markdown(req: BrochureMarkdownRequest):
 def generate_pdf(req: PDFRequest):
     """Generate full PDF brochure from all data."""
     try:
+        restaurant_map_html = req.restaurant_map_html
+        if not restaurant_map_html and req.hotel_data and req.restaurant_data:
+            try:
+                restaurant_map_html = restaurant_svc.generate_restaurant_map(
+                    req.hotel_data, req.restaurant_data,
+                )
+            except Exception:
+                restaurant_map_html = None
+
+        hotel_photo_url = req.hotel_photo_url
         if req.markdown_text:
             md = req.markdown_text
-            # User edited markdown: skip auto-injection of map/hotel photo
-            # (they should already be in the markdown if needed)
-            restaurant_map_html = None
-            hotel_photo_url = None
         else:
             data = {
                 "city_guide": req.city_guide,
@@ -497,10 +504,7 @@ def generate_pdf(req: PDFRequest):
                 "planner": req.planner,
             }
             md = pdf_svc.build_markdown(data)
-            # First generation: auto-inject map and hotel photo
-            restaurant_map_html = req.restaurant_map_html
-            hotel_photo_url = req.hotel_photo_url
-        
+
         pdf_path, final_markdown = pdf_svc.generate_pdf(
             md, req.city, req.country, req.cover_image,
             restaurant_map_html=restaurant_map_html,

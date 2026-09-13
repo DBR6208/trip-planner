@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "./api/client";
+import MarkdownEditor from "./components/MarkdownEditor";
 import PDFPreview from "./components/PDFPreview";
 import type {
   CityGuideRes,
@@ -388,37 +389,10 @@ export default function App() {
     }
   };
 
-  /** Assemble brochure markdown and show the editor. */
-  const handleShowEditor = async () => {
-    if (!s.guideData || !s.selectedHotel) return;
-    update("pdfLoading", true);
-    try {
-      const data = await api.brochureMarkdown({
-        city: s.city,
-        country: s.country || "Germany",
-        city_guide: s.guideData.city_guide,
-        tourist_office: s.guideData.tourist_office,
-        hotel: s.hotelFormatted,
-        restaurants: s.restaurantFormatted,
-        restaurant_data: s.restaurants,
-        journey_out: s.planOut?.markdown || "",
-        journey_home: s.planHome?.markdown || "",
-        planner: s.itinerary,
-      });
-      update("brochureMarkdown", data.markdown);
-      update("showEditor", true);
-      update("pdfUrl", "");
-    } catch (e) { showError(e); }
-    finally { update("pdfLoading", false); }
-  };
-
-  /** Go back from PDF preview to markdown editor. */
-  const handleBackToEditor = () => {
-    update("pdfUrl", "");
-  };
-
   const handleGeneratePDF = async () => {
     if (!s.guideData || !s.selectedHotel) return;
+    update("showEditor", true);
+    update("pdfUrl", "");
     update("pdfLoading", true);
     update("error", "");
     try {
@@ -439,8 +413,8 @@ export default function App() {
         markdown_text: s.brochureMarkdown || undefined,
       });
       update("pdfUrl", data.preview_url);
+      update("brochureMarkdown", data.markdown);
       update("markdownText", data.markdown);
-      // Don't clear showEditor — keep it visible side by side
     } catch (e) { showError(e); }
     finally { update("pdfLoading", false); }
   };
@@ -1348,7 +1322,7 @@ export default function App() {
                   <>
                     <hr className="border-base-300 my-1" />
                     <button
-                      onClick={handleShowEditor}
+                      onClick={handleGeneratePDF}
                       disabled={s.pdfLoading}
                       className="btn btn-primary btn-sm w-full"
                     >
@@ -1360,7 +1334,7 @@ export default function App() {
                       ) : (
                         <span className="flex items-center gap-1.5">
                           <FileText className="w-4 h-4" />
-                          Edit Brochure
+                          Create Brochure
                         </span>
                       )}
                     </button>
@@ -1373,14 +1347,18 @@ export default function App() {
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       PDF ready!
                     </p>
-                    <a
-                      href={`${apiBase}${s.pdfUrl}`}
-                      target="_blank"
+                    <button
+                      onClick={() => {
+                        const a = document.createElement("a");
+                        a.href = `${apiBase}${s.pdfUrl}`;
+                        a.download = `brochure_${s.city}.pdf`;
+                        a.click();
+                      }}
                       className="btn btn-primary btn-sm w-full mt-2 gap-1.5"
                     >
                       <Download className="w-4 h-4" />
                       Download PDF
-                    </a>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1403,7 +1381,7 @@ export default function App() {
                 </p>
               </div>
             ) : s.showEditor ? (
-              <div className={s.pdfUrl ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Editor — always visible when showEditor */}
                 <div>
                   <div className="panel p-4">
@@ -1421,11 +1399,9 @@ export default function App() {
                         </button>
                       )}
                     </div>
-                    <textarea
+                    <MarkdownEditor
                       value={s.brochureMarkdown}
-                      onChange={(e) => update("brochureMarkdown", e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono leading-relaxed resize-y"
-                      style={{ minHeight: s.pdfUrl ? "500px" : "400px", maxHeight: "700px" }}
+                      onChange={(value) => update("brochureMarkdown", value)}
                     />
                     <div className="flex items-center justify-end gap-2 mt-3">
                       <button
@@ -1450,18 +1426,22 @@ export default function App() {
                 </div>
 
                 {/* PDF preview — appears on the right once generated */}
-                {s.pdfUrl && (
-                  <div>
-                    <PDFPreview
-                      pdfUrl={`${apiBase}${s.pdfUrl}`}
-                      onDownload={() => {
-                        const a = document.createElement("a");
-                        a.href = `${apiBase}${s.pdfUrl}`;
-                        a.download = `brochure_${s.city}.pdf`;
-                        a.click();
-                      }}
-                      onBack={() => update("pdfUrl", "")}
-                    />
+                {s.pdfUrl ? (
+                  <PDFPreview
+                    pdfUrl={`${apiBase}${s.pdfUrl}`}
+                    onDownload={() => {
+                      const a = document.createElement("a");
+                      a.href = `${apiBase}${s.pdfUrl}`;
+                      a.download = `brochure_${s.city}.pdf`;
+                      a.click();
+                    }}
+                    onBack={() => update("pdfUrl", "")}
+                  />
+                ) : (
+                  <div className="panel p-4 h-full flex items-center justify-center">
+                    <div className="text-center text-sm text-gray-500 max-w-sm">
+                      Generate the PDF to see the preview here.
+                    </div>
                   </div>
                 )}
               </div>

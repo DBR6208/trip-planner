@@ -56,7 +56,11 @@
   \setlength{\itemsep}{0pt}
   \setlength{\parskip}{0pt}
 }
-\providecommand{\pandocbounded}[1]{#1}
+\providecommand{\pandocbounded}[1]{%
+  \begin{center}
+    #1
+  \end{center}
+}
 
 % Longtable fixes
 \setlength\LTleft{0pt}

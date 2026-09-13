@@ -149,6 +149,7 @@ export interface PDFReq {
   tourist_office: string;
   hotel: string;
   restaurants: string;
+  hotel_data?: Hotel | null;
   restaurant_data: Restaurant[];
   journey_out: string;
   journey_home: string;

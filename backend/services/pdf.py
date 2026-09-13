@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 import pypandoc
@@ -13,7 +14,28 @@ import pypandoc
 from .. import config
 from . import cover_images as cover_svc
 from . import geo
-from .restaurants import CUISINE_COLORS
+
+
+def _latex_escape(text: str) -> str:
+    """Escape text for safe use inside LaTeX content."""
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    return "".join(replacements.get(ch, ch) for ch in text)
+
+
+def _latex_url(url: str) -> str:
+    """Wrap a URL so it can be used safely inside \\href."""
+    return r"\detokenize{" + url + "}"
 
 
 def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
@@ -74,15 +96,46 @@ def _screenshot_map_html(html_content: str, save_dir: str, filename: str = "map_
     try:
         from playwright.sync_api import sync_playwright
 
+        def _browser_executable() -> str | None:
+            candidates = [
+                os.environ.get("CHROME_PATH"),
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            ]
+            for candidate in candidates:
+                if candidate and Path(candidate).exists():
+                    return candidate
+            return None
+
         png_path = os.path.join(save_dir, filename)
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = None
+            browser_path = _browser_executable()
+            try:
+                if browser_path:
+                    browser = p.chromium.launch(headless=True, executable_path=browser_path)
+                else:
+                    browser = p.chromium.launch(headless=True)
+            except Exception:
+                if browser is not None:
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
+                if browser_path:
+                    raise
+                raise
             page = browser.new_page(
                 viewport={"width": config.MAP_SCREENSHOT_WIDTH, "height": config.MAP_SCREENSHOT_HEIGHT},
                 device_scale_factor=2,
             )
-            page.set_content(html_content, wait_until="networkidle")
-            page.wait_for_timeout(2000)
+            # Folium maps keep network activity alive while tiles load, so
+            # waiting for "networkidle" can stall indefinitely. Load the DOM,
+            # then give Leaflet time to render the map and tiles.
+            page.set_content(html_content, wait_until="load")
+            page.wait_for_timeout(5000)
             page.screenshot(path=png_path, full_page=False)
             browser.close()
         return png_path if os.path.exists(png_path) else None
@@ -98,6 +151,10 @@ def build_markdown(data: dict) -> str:
     """
     sections = []
 
+    def new_page_section(title: str, body: str) -> str:
+        """Start a section on a new page in the generated PDF."""
+        return f"\\newpage\n\n# {title}\n\n{body}"
+
     # City Guide
     guide = data.get("city_guide", "")
     guide = _remove_first_title(guide)  # Remove the # title so we can add it ourselves
@@ -109,20 +166,25 @@ def build_markdown(data: dict) -> str:
 
     # Hotel
     hotel = data.get("hotel", "")
-    sections.append(f"# Hotel\n\n{hotel}")
+    sections.append(new_page_section("Hotel", "<!-- HOTEL_PHOTO -->\n\n" + hotel))
 
     # Restaurants
     restaurants = data.get("restaurants", "")
-    sections.append(f"# Restaurants\n\n{restaurants}")
+    sections.append(new_page_section("Restaurants", "<!-- RESTAURANT_MAP -->\n\n" + restaurants))
 
     # Journey
     journey_out = data.get("journey_out", "")
     journey_home = data.get("journey_home", "")
-    sections.append(f"# Journey\n\n## Outbound Journey\n\n{journey_out}\n\n## Return Journey\n\n{journey_home}")
+    sections.append(
+        new_page_section(
+            "Journey",
+            f"## Outbound Journey\n\n{journey_out}\n\n## Return Journey\n\n{journey_home}",
+        )
+    )
 
     # Planner
     planner = data.get("planner", "")
-    sections.append(f"# Planner\n\n{planner}")
+    sections.append(new_page_section("Planner", planner))
 
     doc = "\n\n".join(sections)
 
@@ -193,6 +255,10 @@ citytitle: "{city_title} Weekend Travel Guide"
     template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "travel_template.tex")
     logo_path = os.path.join(os.path.dirname(__file__), "..", "static", "logo.svg")
 
+    def _markdown_path(path: str) -> str:
+        """Normalize a filesystem path for Pandoc markdown on all platforms."""
+        return os.path.abspath(path).replace("\\", "/")
+
     with tempfile.TemporaryDirectory() as tmpdir:
         # Take restaurant map screenshot into tmpdir
         map_markdown = ""
@@ -203,40 +269,10 @@ citytitle: "{city_title} Weekend Travel Guide"
                 map_out_name = f"map_{safe_city}_{timestamp}.png"
                 map_out_path = os.path.join(guides_dir, map_out_name)
                 shutil.copy(map_png, map_out_path)
-                # Build color legend from restaurant data
-                legend_items = []
-                seen = set()
-                if restaurant_data:
-                    for r in restaurant_data:
-                        c = r.get("cuisine", "")
-                        if c and c not in seen:
-                            seen.add(c)
-                            color = CUISINE_COLORS.get(c, "#757575")
-                            legend_items.append(
-                                f"\\textcolor[HTML]{{{color[1:]}}}{{\\textbullet}}~{c}"
-                            )
-                # Split into rows of 3 for a compact centered legend table
-                legend_block = ""
-                if legend_items:
-                    rows = []
-                    for i in range(0, len(legend_items), 3):
-                        row = " & ".join(legend_items[i:i+3])
-                        rows.append(row)
-                    legend_block = (
-                        r"\vspace{2mm}" + "\n"
-                        + r"\begin{tabular}{c c c}" + "\n"
-                        + " \\\\\n".join(rows) + "\n"
-                        + r"\end{tabular}" + "\n"
-                    )
-                map_markdown = (
-                    "\n"
-                    + r"\begin{center}" + "\n"
-                    + r"\includegraphics[width=0.95\textwidth]{" + map_out_path + "}" + "\n"
-                )
-                if legend_block:
-                    map_markdown += legend_block
-                map_markdown += r"\end{center}"# Hotel photo: download into tmpdir
-        hotel_photo_md = ""
+                map_out_path_tex = _markdown_path(map_out_path)
+                map_markdown = f"\n\n![Restaurant map](<{map_out_path_tex}>){{width=75%}}\n\n"
+        hotel_out_path_tex = None
+        hotel_md_ref = None
         if hotel_photo_url:
             try:
                 resp = httpx.get(hotel_photo_url, timeout=15, follow_redirects=True)
@@ -250,27 +286,30 @@ citytitle: "{city_title} Weekend Travel Guide"
                     hotel_out_name = f"hotel_{safe_city}_{timestamp}{ext}"
                     hotel_out_path = os.path.join(guides_dir, hotel_out_name)
                     shutil.copy(hotel_img_local, hotel_out_path)
-                    hotel_photo_md = (
-                        "\n\n"
-                        + r"\begin{center}" + "\n"
-                        + r"\includegraphics[width=0.7\textwidth]{" + hotel_out_path + "}" + "\n"
-                        + r"\end{center}"
-                    )
+                    hotel_out_path_tex = _markdown_path(hotel_out_path)
+                    hotel_md_ref = os.path.basename(hotel_img_local)
                     print(f"Hotel photo saved: {hotel_out_path} ({len(resp.content)} bytes)")
             except Exception as e:
                 print(f"WARNING: Hotel photo download failed: {e} — skipping hotel photo in PDF")
 
         # Build the markdown file in tmpdir
         if map_markdown:
-            # Insert restaurant map after # Restaurants header, before first ## sub-head
+            # Insert restaurant map at the top of the Restaurants section.
             full_md = full_md.replace(
-                "# Restaurants\n\n",
-                f"# Restaurants\n\n{map_markdown}\n\n",
+                "<!-- RESTAURANT_MAP -->",
+                map_markdown,
                 1,
             )
-        if hotel_photo_md:
-            # Insert photo before **Overview** heading in Hotel section
-            full_md = full_md.replace("**Overview**", hotel_photo_md + "\n\n**Overview**", 1)
+        else:
+            full_md = full_md.replace("<!-- RESTAURANT_MAP -->", "", 1)
+        if hotel_out_path_tex:
+            full_md = full_md.replace(
+                "<!-- HOTEL_PHOTO -->",
+                f"\n\n![](<{hotel_md_ref or hotel_out_path_tex}>){{width=75%}}\n\n",
+                1,
+            )
+        else:
+            full_md = full_md.replace("<!-- HOTEL_PHOTO -->", "", 1)
 
         md_file = os.path.join(tmpdir, "guide.md")
         with open(md_file, "w", encoding="utf-8") as f:
@@ -298,11 +337,12 @@ citytitle: "{city_title} Weekend Travel Guide"
                 import cairosvg
                 logo_png = os.path.join(tmpdir, "logo.png")
                 cairosvg.svg2png(url=logo_path, write_to=logo_png, output_width=128, output_height=128)
-                logo_dest = logo_png
-            except Exception:
-                logo_dest = os.path.join(tmpdir, "logo.svg")
-                shutil.copy(logo_path, logo_dest)
-            extra_args.append(f"--variable=logo:{logo_dest}")
+                logo_dest = _markdown_path(logo_png)
+            except Exception as e:
+                print(f"WARNING: Logo conversion failed: {e} — skipping logo in PDF")
+                logo_dest = None
+            if logo_dest:
+                extra_args.append(f"--variable=logo:{logo_dest}")
 
         # Cover image
         cover_path = cover_image_path
@@ -323,7 +363,7 @@ citytitle: "{city_title} Weekend Travel Guide"
                 img_ext = ".jpg"
             img_dest = os.path.join(tmpdir, f"cover_image{img_ext}")
             shutil.copy(cover_path, img_dest)
-            extra_args.append(f"--variable=cover-image:{img_dest}")
+            extra_args.append(f"--variable=cover-image:{_markdown_path(img_dest)}")
 
         pypandoc.convert_file(
             md_file, "pdf", format="markdown",
