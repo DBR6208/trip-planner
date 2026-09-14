@@ -163,6 +163,13 @@
   \endoldtabular%
 }
 
+% Non-banded tabular for legend tables (no alternating row colors)
+\newenvironment{plainrows}{%
+  \rowcolors{1}{}{}%
+}{%
+  \rowcolors{1}{}{tablerowalt}%
+}
+
 % =====================================================
 % DOCUMENT
 % =====================================================

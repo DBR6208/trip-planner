@@ -67,6 +67,7 @@ CHARGING_STATIONS_FILE = os.path.join(
 # PDF output
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "brochures")
 WEEKEND_GUIDES_DIR = os.path.join(os.path.dirname(__file__), "..", "guides")
+TEMP_GUIDES_DIR = os.path.join(WEEKEND_GUIDES_DIR, "temp")
 
 # Map screenshot dimensions for PDF inclusion
 MAP_SCREENSHOT_WIDTH = 800

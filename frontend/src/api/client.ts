@@ -103,4 +103,11 @@ export const api = {
   /** Assemble brochure markdown from trip data (no PDF compilation). */
   brochureMarkdown: (req: import("../types/api").BrochureMarkdownReq) =>
     request<{ markdown: string }>("/api/brochure/markdown", req),
+
+  /** Finalize PDF: copy from temp to guides/{City}.pdf and clear temp. */
+  finalizePDF: (filename: string, city: string) =>
+    request<{ download_url: string; filename: string }>("/api/pdf/finalize", {
+      filename,
+      city,
+    }),
 };

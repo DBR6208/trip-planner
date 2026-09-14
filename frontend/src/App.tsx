@@ -95,6 +95,7 @@ interface FullState {
   itinerary: string;
   itineraryLoading: boolean;
   pdfUrl: string;
+  pdfFilename: string;
   pdfLoading: boolean;
   markdownText: string;
   showEditor: boolean;
@@ -163,6 +164,7 @@ export default function App() {
     itinerary: "",
     itineraryLoading: false,
     pdfUrl: "",
+    pdfFilename: "",
     pdfLoading: false,
     markdownText: "",
     showEditor: false,
@@ -413,10 +415,26 @@ export default function App() {
         markdown_text: s.brochureMarkdown || undefined,
       });
       update("pdfUrl", data.preview_url);
+      // Extract filename from preview_url: /api/pdf/preview/{filename}
+      const filename = data.preview_url.split("/").pop() || "";
+      update("pdfFilename", filename);
       update("brochureMarkdown", data.markdown);
       update("markdownText", data.markdown);
     } catch (e) { showError(e); }
     finally { update("pdfLoading", false); }
+  };
+
+  /** Finalize the PDF: copy from temp to guides/{City}.pdf, clear temp, then download. */
+  const handleFinalizeAndDownload = async () => {
+    if (!s.pdfFilename || !s.city) return;
+    try {
+      const result = await api.finalizePDF(s.pdfFilename, s.city);
+      const downloadUrl = `${apiBase}${result.download_url}`;
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `brochure_${s.city}.pdf`;
+      a.click();
+    } catch (e) { showError(e); }
   };
 
   // ── Auto-recalculate route on address changes ──
@@ -607,13 +625,10 @@ export default function App() {
                     <div className="markdown mb-3"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.guideData.tourist_office}</ReactMarkdown></div>
                     {s.guideData.tourist_office_map && (
                       <div className="rounded-lg overflow-hidden border border-gray-200">
-                        <iframe
-                          srcDoc={s.guideData.tourist_office_map}
-                          title="Tourist Office Map"
+                        <div
                           className="w-full"
-                          style={{ height: "600px", border: "none", overflow: "hidden" }}
-                          scrolling="no"
-                          sandbox="allow-scripts allow-popups allow-same-origin"
+                          style={{ height: "600px" }}
+                          dangerouslySetInnerHTML={{ __html: s.guideData.tourist_office_map }}
                         />
                       </div>
                     )}
@@ -700,13 +715,10 @@ export default function App() {
             )}
             {s.hotelMapHtml && (
               <div className="panel p-0 overflow-hidden rounded-xl border border-gray-200">
-                <iframe
-                  srcDoc={s.hotelMapHtml}
-                  title="Hotel Map"
+                <div
                   className="w-full"
-                  style={{ height: "600px", border: "none", overflow: "hidden" }}
-                  scrolling="no"
-                  sandbox="allow-scripts allow-popups allow-same-origin"
+                  style={{ height: "600px" }}
+                  dangerouslySetInnerHTML={{ __html: s.hotelMapHtml }}
                 />
               </div>
             )}
@@ -831,13 +843,10 @@ export default function App() {
             )}
             {s.restaurantMapHtml && (
               <div className="panel p-0 overflow-hidden rounded-xl border border-gray-200">
-                <iframe
-                  srcDoc={s.restaurantMapHtml}
-                  title="Restaurant Map"
+                <div
                   className="w-full"
-                  style={{ height: "600px", border: "none", overflow: "hidden" }}
-                  scrolling="no"
-                  sandbox="allow-scripts allow-popups allow-same-origin"
+                  style={{ height: "600px" }}
+                  dangerouslySetInnerHTML={{ __html: s.restaurantMapHtml }}
                 />
               </div>
             )}
@@ -1348,12 +1357,7 @@ export default function App() {
                       PDF ready!
                     </p>
                     <button
-                      onClick={() => {
-                        const a = document.createElement("a");
-                        a.href = `${apiBase}${s.pdfUrl}`;
-                        a.download = `brochure_${s.city}.pdf`;
-                        a.click();
-                      }}
+                      onClick={handleFinalizeAndDownload}
                       className="btn btn-primary btn-sm w-full mt-2 gap-1.5"
                     >
                       <Download className="w-4 h-4" />
@@ -1381,11 +1385,11 @@ export default function App() {
                 </p>
               </div>
             ) : s.showEditor ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Editor — always visible when showEditor */}
-                <div>
-                  <div className="panel p-4">
-                    <div className="flex items-center justify-between mb-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[calc(100vh-260px)] min-h-0">
+                {/* Editor — fill the left column */}
+                <div className="flex flex-col min-h-0 overflow-hidden">
+                  <div className="panel p-4 flex flex-col flex-1 min-h-0">
+                    <div className="flex items-center justify-between mb-3 flex-shrink-0">
                       <h2 className="text-sm font-semibold text-brand-blue flex items-center gap-1.5">
                         <FileText className="w-4 h-4" />
                         Edit Brochure — {cap(s.city)}
@@ -1403,7 +1407,7 @@ export default function App() {
                       value={s.brochureMarkdown}
                       onChange={(value) => update("brochureMarkdown", value)}
                     />
-                    <div className="flex items-center justify-end gap-2 mt-3">
+                    <div className="flex items-center justify-end gap-2 mt-3 flex-shrink-0">
                       <button
                         onClick={handleGeneratePDF}
                         disabled={s.pdfLoading}
@@ -1429,12 +1433,7 @@ export default function App() {
                 {s.pdfUrl ? (
                   <PDFPreview
                     pdfUrl={`${apiBase}${s.pdfUrl}`}
-                    onDownload={() => {
-                      const a = document.createElement("a");
-                      a.href = `${apiBase}${s.pdfUrl}`;
-                      a.download = `brochure_${s.city}.pdf`;
-                      a.click();
-                    }}
+                    onDownload={handleFinalizeAndDownload}
                     onBack={() => update("pdfUrl", "")}
                   />
                 ) : (

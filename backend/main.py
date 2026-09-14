@@ -1,6 +1,7 @@
 """Trip Planner — FastAPI Backend."""
 
 import os
+import re
 import tempfile
 from datetime import datetime
 
@@ -10,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config import HOME_ADDRESS, OUTPUT_DIR, WEEKEND_GUIDES_DIR
+from .config import HOME_ADDRESS, OUTPUT_DIR, WEEKEND_GUIDES_DIR, TEMP_GUIDES_DIR
 from .services import (
     city_guide as guide_svc,
     cover_images as cover_svc,
@@ -512,13 +513,19 @@ def generate_pdf(req: PDFRequest):
             restaurant_data=req.restaurant_data,
         )
         # Compress the generated PDF with Ghostscript
-        pdf_svc.compress_pdf(pdf_path)
+        try:
+            pdf_svc.compress_pdf(pdf_path)
+        except Exception:
+            pass  # Compression is optional; keep the uncompressed PDF
         return {
             "pdf_path": pdf_path,
             "download_url": f"/api/pdf/download-attachment/{os.path.basename(pdf_path)}",
             "preview_url": f"/api/pdf/preview/{os.path.basename(pdf_path)}",
             "markdown": final_markdown,
         }
+    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+        # Client disconnected during generation — PDF was saved, just return silently
+        return {"status": "generated"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -548,15 +555,59 @@ def download_pdf_attachment(filename: str):
 
 
 def _resolve_pdf_path(filename: str) -> str:
-    """Find a PDF in guides/ or brochures/."""
+    """Find a PDF in guides/temp/, guides/, or brochures/."""
+    temp_path = os.path.join(TEMP_GUIDES_DIR, filename)
     guides_path = os.path.join(WEEKEND_GUIDES_DIR, filename)
     brochures_path = os.path.join(OUTPUT_DIR, filename)
-    if os.path.exists(guides_path):
+    if os.path.exists(temp_path):
+        return temp_path
+    elif os.path.exists(guides_path):
         return guides_path
     elif os.path.exists(brochures_path):
         return brochures_path
     else:
         raise HTTPException(status_code=404, detail="PDF not found")
+
+
+class FinalizePDFRequest(BaseModel):
+    filename: str
+    city: str
+
+
+@app.post("/api/pdf/finalize")
+def finalize_pdf(req: FinalizePDFRequest):
+    """Copy PDF from temp to guides/{City}.pdf and clear temp dir."""
+    try:
+        # Find in temp
+        temp_path = os.path.join(TEMP_GUIDES_DIR, req.filename)
+        if not os.path.exists(temp_path):
+            raise HTTPException(status_code=404, detail="PDF not found in temp")
+
+        # Copy to city-named file in guides
+        safe_city = re.sub(r"[^a-zA-Z0-9]+", "_", req.city).strip("_").lower()
+        city_pdf = f"{safe_city}.pdf"
+        dest_path = os.path.join(WEEKEND_GUIDES_DIR, city_pdf)
+        os.makedirs(WEEKEND_GUIDES_DIR, exist_ok=True)
+        import shutil
+        shutil.copy2(temp_path, dest_path)
+
+        # Clean temp dir (remove all files/dirs in temp, keep temp itself)
+        if os.path.exists(TEMP_GUIDES_DIR):
+            for item in os.listdir(TEMP_GUIDES_DIR):
+                item_path = os.path.join(TEMP_GUIDES_DIR, item)
+                if os.path.isfile(item_path):
+                    os.remove(item_path)
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+
+        return {
+            "download_url": f"/api/pdf/download-attachment/{city_pdf}",
+            "filename": city_pdf,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/health")

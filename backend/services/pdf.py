@@ -135,7 +135,7 @@ def _screenshot_map_html(html_content: str, save_dir: str, filename: str = "map_
             # waiting for "networkidle" can stall indefinitely. Load the DOM,
             # then give Leaflet time to render the map and tiles.
             page.set_content(html_content, wait_until="load")
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(2000)
             page.screenshot(path=png_path, full_page=False)
             browser.close()
         return png_path if os.path.exists(png_path) else None
@@ -217,8 +217,8 @@ def generate_pdf(
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Ensure guides directory exists
-    guides_dir = config.WEEKEND_GUIDES_DIR
+    # Ensure temp directory exists
+    guides_dir = config.TEMP_GUIDES_DIR
     os.makedirs(guides_dir, exist_ok=True)
 
     # City-based filename
@@ -270,7 +270,7 @@ citytitle: "{city_title} Weekend Travel Guide"
                 map_out_path = os.path.join(guides_dir, map_out_name)
                 shutil.copy(map_png, map_out_path)
                 map_out_path_tex = _markdown_path(map_out_path)
-                map_markdown = f"\n\n![Restaurant map](<{map_out_path_tex}>){{width=75%}}\n\n"
+                map_markdown = _build_map_markdown(map_out_path_tex)
         hotel_out_path_tex = None
         hotel_md_ref = None
         if hotel_photo_url:
@@ -305,7 +305,7 @@ citytitle: "{city_title} Weekend Travel Guide"
         if hotel_out_path_tex:
             full_md = full_md.replace(
                 "<!-- HOTEL_PHOTO -->",
-                f"\n\n![](<{hotel_md_ref or hotel_out_path_tex}>){{width=75%}}\n\n",
+                f"\n\n![](<{hotel_md_ref or hotel_out_path_tex}>){{width=45%}}\n\n",
                 1,
             )
         else:
@@ -417,6 +417,26 @@ def _remove_first_title(text: str) -> str:
     if lines and lines[0].strip().startswith("#"):
         lines = lines[1:]
     return "\n".join(lines).strip()
+
+
+def _build_map_markdown(map_path: str) -> str:
+    """Build markdown for restaurant map (no figure caption, 100% width) + cuisine legend below."""
+    legend = (
+        "\\begin{center}\n"
+        "\\begin{tabular}{ll@{\\hspace{12pt}}ll@{\\hspace{12pt}}ll}\n"
+        "\\textbf{Cuisine} & & &  \\\\[2pt]\n"
+        "\n"
+        "\\textcolor[HTML]{2E7D32}{\\large\\textbullet} Local &\n"
+        "\\textcolor[HTML]{C62828}{\\large\\textbullet} Italian &\n"
+        "\\textcolor[HTML]{1565C0}{\\large\\textbullet} Croatian  \\\\\n"
+        "\n"
+        "\\textcolor[HTML]{E65100}{\\large\\textbullet} Grill &\n"
+        "\\textcolor[HTML]{6A1B9A}{\\large\\textbullet} Steakhouse  &\n"
+        "\\textcolor[HTML]{00838F}{\\large\\textbullet} Seafood\\\\\n"
+        "\\end{tabular}\n"
+        "\\end{center}\n"
+    )
+    return f"\n\n![](<{map_path}>){{width=100%}}\n\n" + legend
 
 
 def _html_links_to_md(html_text: str) -> str:
