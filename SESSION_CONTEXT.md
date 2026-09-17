@@ -107,3 +107,16 @@ myTrip_Planner/
 
 - Backend: `uvicorn backend.main:app --reload --port 8000` → http://localhost:8000
 - Frontend: `npx vite --host 0.0.0.0 --port 5173` → http://localhost:5173
+## ✅ Recent Changes (2026-09-17)
+
+- README.md refreshed:
+  - removed the Key Preferences section
+  - expanded Architecture, Usage, and Screenshots
+  - switched screenshots to the `screenshots/` directory
+- PDF generation hardening:
+  - added traceback logging for PDF failures in `backend/main.py`
+  - tightened cover image downloads to JPEG/PNG only
+  - normalized cover image and map paths in `backend/services/pdf.py`
+  - switched the restaurant map to Markdown image syntax for Pandoc resource resolution
+- `backend/services/llm.py` fallback handling widened for transient connection and DNS failures
+- `backend/templates/travel_template.tex` now detokenizes logo and cover image paths

@@ -1,33 +1,34 @@
-# DBG Travel — Trip Planner
+# DBG Travel - Trip Planner
 
-A weekend trip planner web application that generates branded PDF travel brochures. Enter your destination, and it produces a complete weekend guide with route planning, hotel recommendations, restaurant selection, sightseeing, and EV charging details — all formatted in the DBG Travel brand style.
+DBG Travel is a weekend trip planner web application that generates branded PDF travel brochures. Enter a destination city and the app assembles a complete weekend guide with city research, hotel suggestions, restaurant picks, EV route planning, a day-by-day itinerary, and a brochure-ready cover image.
 
 ## Architecture
 
-```
-├── backend/          FastAPI (Python) — 13 API endpoints
-│   ├── main.py       App entry point
-│   ├── config.py     Constants, addresses, thresholds, model selection
-│   ├── services/     9 service modules
-│   │   ├── llm.py             LLM prompt orchestration (auto-fallback on overload)
-│   │   ├── city_guide.py      City descriptions
-│   │   ├── hotels.py          Hotel search, photos, indoor parking lookup, Folium maps
-│   │   ├── restaurants.py     Restaurant search & filtering
-│   │   ├── tourist_office.py  Tourist info + Folium map
-│   │   ├── geo.py             Geocoding & maps
-│   │   ├── charging.py        EV charging station lookup
-│   │   ├── planner.py         Weekend itinerary generation
-│   │   └── pdf.py             PDF generation (LaTeX → PDF)
-│   └── templates/
-│       └── travel_template.tex   LaTeX template
-├── frontend/         React 19 + TypeScript 6 + Vite 8 + Tailwind 4
-│   └── src/
-│       ├── App.tsx    6-step wizard (Explore → Hotel → Restaurants → Route → Planning → Brochure)
-│       └── index.css  DBG Travel brand theme (navy/gold)
-├── docs/              Screenshots and documentation images
-├── SESSION_CONTEXT.md  Session state tracking
-├── REQUIREMENTS.md     Feature specification & issue tracking
-└── myTripPlanner_V08.ipynb  Original Gradio notebook (frozen reference)
+This project is split into a React frontend and a FastAPI backend:
+
+- `frontend/` provides the multi-step trip planning UI. It is built with React, TypeScript, Vite, and Tailwind, and guides the user through Explore, Hotel, Restaurants, Route, Planning, and Brochure tabs.
+- `backend/` exposes the API and coordinates the trip-planning pipeline. It handles city summaries, hotel search, restaurant filtering, EV charging route planning, itinerary generation, and PDF creation.
+- `backend/services/` contains the domain-specific service modules for LLM prompting, geocoding, hotels, restaurants, tourist-office data, charging stations, route planning, cover images, and PDF generation.
+- `backend/templates/` stores the LaTeX brochure template used to render the final PDF.
+- `screenshots/` contains the UI captures used in this README.
+
+At a high level, the app works like this:
+
+1. The user enters a destination city in the frontend.
+2. The backend enriches that destination with travel, hotel, dining, routing, and itinerary data.
+3. The frontend presents the results step by step in the tabs.
+4. The Brochure tab combines the gathered content into a downloadable travel brochure.
+
+## Project Layout
+
+```text
+backend/                FastAPI backend and service layer
+frontend/               React + TypeScript frontend
+screenshots/            README screenshots for each UI step
+README.md               Project overview and setup guide
+SESSION_CONTEXT.md      Session state tracking
+REQUIREMENTS.md         Feature specification and issue tracking
+myTripPlanner_V08.ipynb Original Gradio notebook reference
 ```
 
 ## Setup
@@ -36,38 +37,38 @@ A weekend trip planner web application that generates branded PDF travel brochur
 
 - Python 3.11+
 - Node.js 18+
-- LaTeX installation (for PDF generation: `texlive-xetex`, `texlive-latex-extra`, `pandoc`)
+- LaTeX installation for PDF generation, including `texlive-xetex`, `texlive-latex-extra`, and `pandoc`
 
 ### Backend
 
 **Linux/macOS:**
+
 ```bash
-# From the project root
 python3 -m venv .venv
 source .venv/bin/activate
 uv pip install -r backend/requirements.txt
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
-# From the project root
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 uv pip install -r backend/requirements.txt
 ```
 
-If `uv` is not available, use `pip` instead of `uv pip` — it's slower but works.
+If `uv` is not available, use `pip install -r backend/requirements.txt` instead.
 
-Create a `.env` file in the project root with your API keys:
+Create a `.env` file in the project root with the required API keys:
 
 ```env
-OPENROUTER_API_KEY=...          # LLM provider (default model: openai/gpt-4o-mini)
-TAVILY_API_KEY=...              # Web search + cover image search
-ORS_API_KEY=...                 # OpenRouteService — routing & directions
-GOOGLE_MAPS_API_KEY=...         # Places, hotel & restaurant details
+OPENROUTER_API_KEY=...      # LLM provider
+TAVILY_API_KEY=...          # Web search and cover image search
+ORS_API_KEY=...             # OpenRouteService routing and directions
+GOOGLE_MAPS_API_KEY=...     # Places, hotel, and restaurant data
 ```
 
-Then start the server:
+Then start the backend:
 
 ```bash
 uvicorn backend.main:app --reload --port 8000
@@ -81,44 +82,84 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 in your browser.
+Then open `http://localhost:5173` in your browser.
 
 ### PDF Generation
 
-PDFs are produced server-side via LaTeX (pandoc + xelatex). Ensure you have the required TeX packages:
+PDFs are produced server-side with LaTeX, via pandoc and xelatex. Make sure the required TeX packages are installed:
 
 ```bash
 sudo apt install texlive-xetex texlive-latex-extra pandoc
 ```
 
-Additional: `fonts-font-awesome` for icons in PDFs. The PDF template also requires Ghostscript for compression (`gs`).
+For icon support in the PDF, install `fonts-font-awesome`. The brochure pipeline may also rely on Ghostscript (`gs`) for compression.
 
 ## Usage
 
-1. Open the frontend (or call the API directly)
-2. Enter your destination city
-3. Select travel dates (Friday → Sunday)
-4. Choose hotel preferences and restaurant cuisines
-5. Generate your weekend itinerary
-6. Download the PDF brochure
+1. Start both the backend and frontend.
+2. Open the app in your browser.
+3. Enter a destination city and country in the Explore tab.
+4. Review the generated city guide and tourist-office information.
+5. Move to the Hotel tab and choose a suitable place to stay.
+6. Open the Restaurants tab to filter cuisines and compare dining options.
+7. Use the Route tab to plan the EV journey, including charging stops.
+8. Open the Planning tab to generate the weekend itinerary.
+9. Visit the Brochure tab, choose a cover image, and generate the final PDF.
 
-## Key Preferences
+Typical flow:
 
-- Departure from: **Heirweg 85A, 9190 Stekene, Belgium**
-- Hotels: 4–5 star only
-- Cuisines: local, Italian, Croatian, grill, steakhouse, seafood
-- Walking cap: 1.5 km (take taxi beyond that)
-- Weekend: Friday 5–6 PM arrival → Sunday 5–7 PM return home
-- Budget: ~€1500–2000 for 3 people (hotel, dinner, drinks)
-
-## Tech Stack
-
-- **Backend:** FastAPI, OpenRouter (GPT-4o), Google Maps API, OpenRouteService, Tavily Search
-- **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind 4, DaisyUI, react-markdown
-- **PDF:** LaTeX via pandoc + xelatex
+- Explore first to confirm the destination and read the city overview.
+- Pick a hotel before planning the rest of the weekend, so the itinerary can stay realistic.
+- Select restaurants that fit the expected walk time and cuisine preferences.
+- Generate the route last if you want the trip to include EV charging details and travel time estimates.
+- Finish by creating the brochure, which packages the whole trip into a polished document.
 
 ## Screenshots
 
-| Explore tab | Hotel tab |
-|:---:|:---:|
-| ![Explore tab](docs/explore-tab.png) | ![Hotel tab](docs/hotel-tab.png) |
+### 1. Explore
+
+The Explore tab is the starting point. It lets you enter a city and country, then generates the destination guide and tourist-office context for the trip.
+
+![Explore tab](screenshots/Screenshot01.png)
+
+### 2. Destination Guide
+
+After the city is loaded, the Explore view expands into a full city guide with background information, top attractions, and a tourist-office map.
+
+![City guide and tourist office](screenshots/Screenshot02.png)
+
+### 3. Hotel Selection
+
+The Hotel tab shows candidate hotels on the map and in a ranked list, along with detailed property information and photos.
+
+![Hotel tab](screenshots/Screenshot03.png)
+
+### 4. Restaurant Selection
+
+The Restaurants tab filters venues by cuisine, displays them on the map, and shows walking distance, rating, and detail cards for each option.
+
+![Restaurants tab](screenshots/Screenshot04.png)
+
+### 5. Route Planning
+
+The Route tab builds an EV-friendly driving plan with charging stops, outbound and return leg summaries, and a route map.
+
+![Route tab](screenshots/Screenshot05.png)
+
+### 6. Weekend Planning
+
+The Planning tab generates the day-by-day weekend itinerary, turning the selected destination into a readable trip plan.
+
+![Planning tab](screenshots/Screenshot06.png)
+
+### 7. Brochure Creation
+
+The Brochure tab lets you choose a cover image, preview it, and generate the final PDF brochure.
+
+![Brochure tab](screenshots/Screenshot07.png)
+
+## Tech Stack
+
+- **Backend:** FastAPI, OpenRouter, Google Maps API, OpenRouteService, Tavily Search
+- **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind 4, DaisyUI, react-markdown
+- **PDF:** LaTeX via pandoc and xelatex

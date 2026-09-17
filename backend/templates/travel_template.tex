@@ -184,7 +184,7 @@
   % Logo (left) + DBG TRAVEL text (same line, same height)
   $if(logo)$
   \begin{minipage}[c]{0.12\textwidth}
-    \includegraphics[width=\textwidth, keepaspectratio]{$logo$}
+    \includegraphics[width=\textwidth, keepaspectratio]{\detokenize{$logo$}}
   \end{minipage}
   \hspace{0.5em}
   \begin{minipage}[c]{0.75\textwidth}
@@ -200,7 +200,7 @@
 
   $if(cover-image)$
   \vspace*{0.5cm}
-  \includegraphics[width=\textwidth, height=0.3\textheight, keepaspectratio]{$cover-image$}
+  \includegraphics[width=\textwidth, height=0.3\textheight, keepaspectratio]{\detokenize{$cover-image$}}
   \vspace{0.5cm}
   $else$
   \vspace*{1.5cm}

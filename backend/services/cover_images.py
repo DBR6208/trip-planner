@@ -68,8 +68,10 @@ def download_image(url: str, save_dir: str) -> str | None:
         resp = httpx.get(url, follow_redirects=True, timeout=20, headers=_HEADERS)
         resp.raise_for_status()
         ct = resp.headers.get("content-type", "")
-        if not ct.startswith("image/"):
+        if ct not in {"image/jpeg", "image/png"}:
             return None
+        if ext not in {".jpg", ".jpeg", ".png"}:
+            ext = ".jpg" if ct == "image/jpeg" else ".png"
 
         dest = os.path.join(save_dir, f"cover{ext}")
         with open(dest, "wb") as f:
@@ -260,6 +262,8 @@ def _search_tavily_images(city: str) -> list[dict]:
                 # Skip URLs containing portrait keywords
                 if any(p in img_url.lower() for p in _PORTRAIT_PATTERNS):
                     continue
+                if any(img_url.lower().endswith(ext) for ext in (".webp", ".gif")):
+                    continue
                 results.append({
                     "url": img_url,
                     "thumb": img_url,
@@ -279,6 +283,8 @@ def _search_tavily_images(city: str) -> list[dict]:
                     for domain in photo_domains:
                         if domain in url.lower():
                             if any(p in url.lower() for p in _PORTRAIT_PATTERNS):
+                                continue
+                            if any(url.lower().endswith(ext) for ext in (".webp", ".gif")):
                                 continue
                             results.append({
                                 "url": url,

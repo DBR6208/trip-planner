@@ -3,6 +3,7 @@
 import os
 import re
 import tempfile
+import traceback
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
@@ -202,6 +203,8 @@ def get_city_guide(req: CityGuideRequest):
             attraction_images=attraction_images,
         )
     except Exception as e:
+        print("PDF generation failed:")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 

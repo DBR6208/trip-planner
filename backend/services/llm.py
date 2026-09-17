@@ -69,7 +69,7 @@ def generate(
 
         except Exception as e:
             err = str(e).lower()
-            # Only fall through for overload/rate-limit/bad-gateway errors
+            # Fall through for transient provider/network failures.
             if any(
                 token in err
                 for token in [
@@ -77,6 +77,9 @@ def generate(
                     "429", "rate limit", "rate_limit",
                     "502", "bad gateway",
                     "timeout", "timed out",
+                    "connection error", "api connection error",
+                    "connectionreset", "connection reset",
+                    "dns", "name resolution",
                 ]
             ):
                 last_error = str(e)

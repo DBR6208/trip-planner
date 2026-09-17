@@ -1,5 +1,6 @@
 """Markdown assembly and PDF generation via pandoc + LaTeX."""
 
+import asyncio
 import os
 import re
 import shutil
@@ -14,6 +15,16 @@ import pypandoc
 from .. import config
 from . import cover_images as cover_svc
 from . import geo
+
+
+if os.name == "nt" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
+    try:
+        # Playwright launches Chromium through subprocesses on Windows.
+        # Some environments switch to a selector loop policy, which cannot
+        # create subprocess transports and causes NotImplementedError.
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    except Exception:
+        pass
 
 
 def _latex_escape(text: str) -> str:
@@ -65,7 +76,7 @@ def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
                 if resp.status_code != 200:
                     continue
                 ct = resp.headers.get("content-type", "")
-                if not ct.startswith("image/"):
+                if ct not in {"image/jpeg", "image/png"}:
                     continue
                 ext = ".jpg"
                 m = re.search(r"\.(jpe?g|png|gif|webp)(\?|$)", img_url, re.IGNORECASE)
@@ -73,6 +84,8 @@ def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
                     ext = m.group(1).lower()
                     if ext == "jpeg":
                         ext = ".jpg"
+                if ext not in {".jpg", ".jpeg", ".png"}:
+                    ext = ".jpg" if ct == "image/jpeg" else ".png"
                 dest = os.path.join(save_dir, f"cover_city{ext}")
                 with open(dest, "wb") as f:
                     f.write(resp.content)
@@ -263,14 +276,11 @@ citytitle: "{city_title} Weekend Travel Guide"
         # Take restaurant map screenshot into tmpdir
         map_markdown = ""
         if restaurant_map_html:
-            map_png = _screenshot_map_html(restaurant_map_html, tmpdir, "map_restaurants.png")
+            map_png = _screenshot_map_html(restaurant_map_html, tmpdir, "map-restaurants.png")
             if map_png and os.path.exists(map_png):
-                # Copy next to output PDF so xelatex can find it
-                map_out_name = f"map_{safe_city}_{timestamp}.png"
-                map_out_path = os.path.join(guides_dir, map_out_name)
-                shutil.copy(map_png, map_out_path)
-                map_out_path_tex = _markdown_path(map_out_path)
-                map_markdown = _build_map_markdown(map_out_path_tex)
+                # Keep the map in the temp directory and reference it by name.
+                # A hyphenated filename avoids Pandoc escaping issues.
+                map_markdown = _build_map_markdown(os.path.basename(map_png))
         hotel_out_path_tex = None
         hotel_md_ref = None
         if hotel_photo_url:
@@ -361,14 +371,26 @@ citytitle: "{city_title} Weekend Travel Guide"
             img_ext = os.path.splitext(cover_path)[1]
             if not img_ext:
                 img_ext = ".jpg"
-            img_dest = os.path.join(tmpdir, f"cover_image{img_ext}")
-            shutil.copy(cover_path, img_dest)
-            extra_args.append(f"--variable=cover-image:{_markdown_path(img_dest)}")
+            if img_ext.lower() not in {".jpg", ".jpeg", ".png"}:
+                print(f"Skipping unsupported cover image format: {cover_path}")
+                cover_path = None
+            else:
+                # Avoid underscores here: Pandoc can escape them when injecting
+                # template variables, which makes XeLaTeX look for cover\_image.*.
+                img_dest = os.path.join(tmpdir, f"cover-image{img_ext}")
+                shutil.copy(cover_path, img_dest)
+                extra_args.append(f"--variable=cover-image:{_markdown_path(img_dest)}")
 
-        pypandoc.convert_file(
-            md_file, "pdf", format="markdown",
-            outputfile=output_pdf, extra_args=extra_args,
-        )
+        try:
+            pypandoc.convert_file(
+                md_file, "pdf", format="markdown",
+                outputfile=output_pdf, extra_args=extra_args,
+            )
+        except Exception as e:
+            # Preserve the pandoc error output in the server logs so we can
+            # see the exact image or LaTeX failure on the next run.
+            print(f"Pandoc conversion failed for {md_file}: {e}")
+            raise
 
     # Return both the PDF path AND the final markdown (with images injected)
     # so the frontend can display the exact markdown used to generate the PDF
@@ -421,6 +443,7 @@ def _remove_first_title(text: str) -> str:
 
 def _build_map_markdown(map_path: str) -> str:
     """Build markdown for restaurant map (no figure caption, 100% width) + cuisine legend below."""
+    map_file = Path(map_path).name
     legend = (
         "\\begin{center}\n"
         "\\begin{tabular}{ll@{\\hspace{12pt}}ll@{\\hspace{12pt}}ll}\n"
@@ -436,7 +459,10 @@ def _build_map_markdown(map_path: str) -> str:
         "\\end{tabular}\n"
         "\\end{center}\n"
     )
-    return f"\n\n![](<{map_path}>){{width=100%}}\n\n" + legend
+    return (
+        "\n\n![](" + map_file + "){ width=100% }\n\n"
+        + legend
+    )
 
 
 def _html_links_to_md(html_text: str) -> str:
