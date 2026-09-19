@@ -37,10 +37,10 @@ export default function PDFPreview({ pdfUrl, onBack, onDownload }: Props) {
             tabBar: "never",
             disabledCategories: ["annotation", "redaction", "insert"],
             zoom: {
-              defaultZoomLevel: 1,
+              defaultZoomLevel: 1.25,
             },
             scroll: {
-              defaultStrategy: ScrollStrategy.Horizontal,
+              defaultStrategy: ScrollStrategy.Vertical,
             },
           }}
           style={{ width: "100%", height: "100%" }}

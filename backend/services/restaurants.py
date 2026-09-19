@@ -175,7 +175,7 @@ def format_restaurants(restaurants: list[dict]) -> str:
 
     sections = []
     for cuisine, rest_list in by_cuisine.items():
-        sections.append(f"## {cuisine} Restaurants\n\n---")
+        sections.append(f"\\newpage\n\n## {cuisine} Restaurants\n\n---")
         for r in rest_list:
             maps_url = geo.generate_maps_url(r.get("place_id", ""), "restaurant")
             desc = r.get("description") or _short_description(r)
