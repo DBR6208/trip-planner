@@ -10,4 +10,5 @@ from . import (
     charging,
     planner,
     pdf,
+    layout_chat,
 )

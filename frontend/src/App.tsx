@@ -24,6 +24,8 @@ import {
   Download,
   Calendar,
   Image,
+  MessageSquare,
+  Undo2,
 } from "lucide-react";
 import "./index.css";
 
@@ -40,6 +42,21 @@ function cap(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
+function stripInternalLayoutMarkers(markdown: string): string {
+  return markdown.replace(
+    /<!--\s*(?:PAGE_BREAK|RESTAURANT_CARD_START|RESTAURANT_CARD_END)\s*-->\s*/g,
+    "",
+  );
+}
+
+function stripBrochurePageBreaks(markdown: string): string {
+  return markdown
+    .replace(/^\s*<!--\s*pagebreak\s*-->\s*$/gim, "")
+    .replace(/^\s*\\newpage\s*$/gim, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // ── Tab config ──
 const TABS = [
   { id: 0, label: "Explore", icon: Compass },
@@ -51,6 +68,15 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+const DEFAULT_LAYOUT_SETTINGS: import("./types/api").BrochureLayoutSettings = {
+  hotel_image_alignment: "center",
+  hotel_image_width_percent: 45,
+  restaurant_map_width_percent: 100,
+  keep_restaurant_cards_together: true,
+  restaurant_heading_gap_pt: 14,
+  restaurant_card_gap_pt: 12,
+};
 
 function tabReady(id: TabId, state: FullState): boolean {
   if (id === 0) return true;
@@ -105,6 +131,11 @@ interface FullState {
   selectedCoverImage: import("./types/api").CoverImageInfo | null;
   coverImageCustomUrl: string;
   coverImageUploading: boolean;
+  layoutSettings: import("./types/api").BrochureLayoutSettings;
+  layoutHistory: import("./types/api").BrochureLayoutSettings[];
+  layoutChatMessage: string;
+  layoutChatSummary: string;
+  layoutChatLoading: boolean;
   error: string;
   showGuide: boolean;
 }
@@ -174,6 +205,11 @@ export default function App() {
     selectedCoverImage: null,
     coverImageCustomUrl: "",
     coverImageUploading: false,
+    layoutSettings: DEFAULT_LAYOUT_SETTINGS,
+    layoutHistory: [],
+    layoutChatMessage: "",
+    layoutChatSummary: "",
+    layoutChatLoading: false,
     error: "",
     showGuide: false,
   });
@@ -268,7 +304,7 @@ export default function App() {
         s.selectedHotel,
       );
       update("restaurants", data.restaurants);
-      update("restaurantFormatted", data.formatted);
+      update("restaurantFormatted", stripBrochurePageBreaks(data.formatted));
       update("restaurantMapHtml", data.map_html);
     } catch (e) { showError(e); }
     finally { update("restaurantLoading", false); }
@@ -296,10 +332,6 @@ export default function App() {
   };
 
   const handlePlanTrip = async () => {
-    if (s.selectedOut.length === 0) {
-      update("error", "Select at least one charging stop for the way out.");
-      return;
-    }
     update("planLoading", true);
     update("error", "");
     try {
@@ -412,16 +444,49 @@ export default function App() {
         cover_image: s.selectedCoverImage?.url,
         restaurant_map_html: s.restaurantMapHtml || undefined,
         hotel_photo_url: s.selectedHotel?.photo_url || undefined,
-        markdown_text: s.brochureMarkdown || undefined,
+        markdown_text: stripInternalLayoutMarkers(s.brochureMarkdown) || undefined,
+        layout_settings: s.layoutSettings,
       });
       update("pdfUrl", data.preview_url);
       // Extract filename from preview_url: /api/pdf/preview/{filename}
       const filename = data.preview_url.split("/").pop() || "";
       update("pdfFilename", filename);
-      update("brochureMarkdown", data.markdown);
-      update("markdownText", data.markdown);
+      const cleanMarkdown = stripInternalLayoutMarkers(data.markdown);
+      update("brochureMarkdown", cleanMarkdown);
+      update("markdownText", cleanMarkdown);
     } catch (e) { showError(e); }
     finally { update("pdfLoading", false); }
+  };
+
+  const handleLayoutChat = async () => {
+    const message = s.layoutChatMessage.trim();
+    if (!message) return;
+    update("layoutChatLoading", true);
+    update("error", "");
+    try {
+      const result = await api.layoutChat(message, s.layoutSettings);
+      set((prev) => ({
+        ...prev,
+        layoutHistory: [...prev.layoutHistory, prev.layoutSettings],
+        layoutSettings: result.settings,
+        layoutChatMessage: "",
+        layoutChatSummary: result.summary,
+      }));
+    } catch (e) { showError(e); }
+    finally { update("layoutChatLoading", false); }
+  };
+
+  const handleUndoLayout = () => {
+    set((prev) => {
+      const previous = prev.layoutHistory[prev.layoutHistory.length - 1];
+      if (!previous) return prev;
+      return {
+        ...prev,
+        layoutSettings: previous,
+        layoutHistory: prev.layoutHistory.slice(0, -1),
+        layoutChatSummary: "Previous layout settings restored. Regenerate the PDF to preview them.",
+      };
+    });
   };
 
   /** Finalize the PDF: copy from temp to guides/{City}.pdf, clear temp, then download. */
@@ -871,7 +936,7 @@ export default function App() {
                     Restaurant Selection
                   </h2>
                   <div className="scroll-content pr-1">
-                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{s.restaurantFormatted}</ReactMarkdown></div>
+                    <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{stripBrochurePageBreaks(s.restaurantFormatted)}</ReactMarkdown></div>
                   </div>
                 </div>
               </>
@@ -1012,6 +1077,12 @@ export default function App() {
                   <p className="text-xs font-medium text-gray-600 mb-2">
                     Charging Stations
                   </p>
+                   {s.selectedOut.length === 0 && s.selectedHome.length === 0 && (
+                     <p className="text-[11px] text-gray-500 mb-2 leading-relaxed">
+                       No charging stop is automatically required for this route. You can plan the direct trip,
+                       or select a station below for an optional charge.
+                     </p>
+                   )}
                   <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
                     {s.routeStations.map((st, i) => (
                       <div
@@ -1065,7 +1136,7 @@ export default function App() {
                   </div>
                   <button
                     onClick={handlePlanTrip}
-                    disabled={s.selectedOut.length === 0 || s.planLoading}
+                    disabled={s.planLoading}
                     className="btn btn-primary btn-sm w-full mt-2"
                   >
                     {s.planLoading ? (
@@ -1076,7 +1147,7 @@ export default function App() {
                     ) : (
                       <span className="flex items-center gap-1.5">
                         <Car className="w-4 h-4" />
-                        Plan Trip
+                        {s.selectedOut.length > 0 || s.selectedHome.length > 0 ? "Plan Trip" : "Plan Direct Trip"}
                       </span>
                     )}
                   </button>
@@ -1404,9 +1475,52 @@ export default function App() {
                       )}
                     </div>
                     <MarkdownEditor
-                      value={s.brochureMarkdown}
-                      onChange={(value) => update("brochureMarkdown", value)}
+                      value={stripInternalLayoutMarkers(s.brochureMarkdown)}
+                      onChange={(value) => update("brochureMarkdown", stripInternalLayoutMarkers(value))}
                     />
+                    <div className="mt-3 rounded-lg border border-base-300 bg-base-100 p-3 flex-shrink-0">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-blue">
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          Layout assistant
+                        </div>
+                        <button
+                          onClick={handleUndoLayout}
+                          disabled={s.layoutHistory.length === 0 || s.layoutChatLoading}
+                          className="btn btn-ghost btn-xs gap-1"
+                        >
+                          <Undo2 className="w-3.5 h-3.5" />
+                          Undo
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mb-2">
+                        Edit page breaks directly in the Markdown above: add, move, or delete a <code>&lt;!-- pagebreak --&gt;</code> line. It remains hidden in previews. Use chat for spacing, card splitting, and image size or alignment.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          value={s.layoutChatMessage}
+                          onChange={(e) => update("layoutChatMessage", e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleLayoutChat();
+                            }
+                          }}
+                          placeholder="Describe a layout adjustment…"
+                          className="input input-bordered input-sm flex-1"
+                        />
+                        <button
+                          onClick={handleLayoutChat}
+                          disabled={!s.layoutChatMessage.trim() || s.layoutChatLoading}
+                          className="btn btn-outline btn-sm"
+                        >
+                          {s.layoutChatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
+                        </button>
+                      </div>
+                      {s.layoutChatSummary && (
+                        <p className="text-[11px] text-green-700 mt-2">{s.layoutChatSummary}</p>
+                      )}
+                    </div>
                     <div className="flex items-center justify-end gap-2 mt-3 flex-shrink-0">
                       <button
                         onClick={handleGeneratePDF}
@@ -1433,7 +1547,6 @@ export default function App() {
                 {s.pdfUrl ? (
                   <PDFPreview
                     pdfUrl={`${apiBase}${s.pdfUrl}`}
-                    onDownload={handleFinalizeAndDownload}
                     onBack={() => update("pdfUrl", "")}
                   />
                 ) : (

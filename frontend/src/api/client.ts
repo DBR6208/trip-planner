@@ -72,6 +72,12 @@ export const api = {
   generatePDF: (req: import("../types/api").PDFReq) =>
     request<import("../types/api").PDFRes>("/api/pdf", req),
 
+  layoutChat: (message: string, current_settings: import("../types/api").BrochureLayoutSettings) =>
+    request<import("../types/api").LayoutChatRes>("/api/brochure/layout-chat", {
+      message,
+      current_settings,
+    }),
+
   coverImages: (city: string, tourist_office_website?: string) =>
     request<import("../types/api").CoverImagesRes>("/api/cover-images", {
       city,

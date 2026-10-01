@@ -158,6 +158,7 @@ export interface PDFReq {
   restaurant_map_html?: string;
   hotel_photo_url?: string;
   markdown_text?: string;
+  layout_settings?: BrochureLayoutSettings;
 }
 
 export interface PDFRes {
@@ -165,6 +166,21 @@ export interface PDFRes {
   download_url: string;
   preview_url: string;
   markdown: string;
+  engine: string;
+}
+
+export interface BrochureLayoutSettings {
+  hotel_image_alignment: "center" | "left" | "right";
+  hotel_image_width_percent: number;
+  restaurant_map_width_percent: number;
+  keep_restaurant_cards_together: boolean;
+  restaurant_heading_gap_pt: number;
+  restaurant_card_gap_pt: number;
+}
+
+export interface LayoutChatRes {
+  settings: BrochureLayoutSettings;
+  summary: string;
 }
 
 export interface CoverImageInfo {

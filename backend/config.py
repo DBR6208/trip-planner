@@ -18,6 +18,10 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 # Fallback model when primary is overloaded or returns empty
 FALLBACK_MODEL = "openai/gpt-4o-mini"
 
+# Low-cost model used only for constrained brochure layout commands. It is
+# intentionally separate from the itinerary/content model.
+OPENROUTER_LAYOUT_MODEL = os.getenv("OPENROUTER_LAYOUT_MODEL", "openai/gpt-6-luna")
+
 # Departure address
 HOME_ADDRESS = "Heirweg 85A, 9190 Stekene, Belgium"
 
@@ -35,8 +39,8 @@ HOTEL_SEARCH_RADIUS = 1500  # meters from city center
 HOTEL_DISTANCE_LIMIT = 3000  # max meters from city center
 
 # Restaurant search
-RESTAURANT_SEARCH_RADIUS = 2000  # meters from hotel
-WALK_DISTANCE_MAX_METERS = 1500  # ~20 min walk
+RESTAURANT_SEARCH_RADIUS = 3000  # meters from hotel
+WALK_DISTANCE_MAX_METERS = 2500  # ~30 min walk
 REVIEW_MINIMUM = 50  # minimum review count
 REVIEW_MINIMUM_HIGH_RATING = 100  # for ratings >= 4.5
 
@@ -45,9 +49,11 @@ ALLOWED_CUISINES = [
     "Local", "Italian", "Croatian", "Grill", "Steakhouse", "Seafood"
 ]
 
-# Cuisine filter keywords (any restaurant mentioning these is excluded)
+# Cuisine filter keywords (any restaurant mentioning these is excluded).
+# Keep this list focused on cuisine/style terms rather than subjective labels.
 EXCLUDED_CUISINE_KEYWORDS = [
-    "turkish", "syrian", "asian", "halal", "chinese", "thai",
+    "turkish", "türkisch", "turkisch", "kebab", "kebap", "doner", "döner",
+    "anatolian", "ottoman", "syrian", "asian", "fusion", "halal", "chinese", "thai",
     "lebanese", "indian", "japanese", "korean", "vietnamese",
     "mexican", "african", "middle eastern", "indonesian",
     "filipino", "pakistani", "bangladeshi", "persian",
@@ -68,6 +74,11 @@ CHARGING_STATIONS_FILE = os.path.join(
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "brochures")
 WEEKEND_GUIDES_DIR = os.path.join(os.path.dirname(__file__), "..", "guides")
 TEMP_GUIDES_DIR = os.path.join(WEEKEND_GUIDES_DIR, "temp")
+
+# PDF renderer. Keep XeLaTeX as the default so the current production PDF
+# workflow remains the immediate rollback path while Typst is evaluated.
+PDF_ENGINE = os.getenv("PDF_ENGINE", "xelatex").strip().lower()
+TYPST_COMMAND = os.getenv("TYPST_COMMAND", "typst")
 
 # Map screenshot dimensions for PDF inclusion
 MAP_SCREENSHOT_WIDTH = 800

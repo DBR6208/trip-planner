@@ -11,7 +11,7 @@ frontend/                 React 19 + TypeScript 6 + Vite 8 + Tailwind 4 + DaisyU
 backend/                  FastAPI (Python 3.11+)
 ├── main.py               App entry point — 18 API endpoints
 ├── config.py             API keys, thresholds, routes, constants
-├── services/             10 service modules
+├── services/             Domain and rendering service modules
 │   ├── llm.py            LLM orchestration with auto-fallback
 │   ├── city_guide.py     Tavily search + LLM city guide generation
 │   ├── hotels.py         Google Places hotel search + Folium maps + parking
@@ -20,10 +20,14 @@ backend/                  FastAPI (Python 3.11+)
 │   ├── geo.py            Geocoding, ORS routing, Google Maps URLs
 │   ├── charging.py       EV charging BFS route planner + ORS distance matrix
 │   ├── planner.py        Weekend itinerary via LLM
-│   ├── pdf.py            Markdown assembly → pandoc + XeLaTeX → PDF
+│   ├── pdf.py            Markdown assembly → Pandoc renderer → PDF
+│   ├── layout_chat.py    GPT Luna constrained brochure-layout commands
 │   └── cover_images.py   Wikipedia + Tavily + Bing cover image search
 ├── templates/
-│   └── travel_template.tex  LaTeX brochure template
+│   ├── travel_template.tex  XeLaTeX brochure template (default / rollback)
+│   └── travel_template.typ  Typst brochure template (opt-in)
+├── filters/
+│   └── typst_layout.lua  Pandoc layout blocks → Typst page/card controls
 └── static/               Static assets (logo, etc.)
 ```
 
@@ -34,7 +38,7 @@ backend/                  FastAPI (Python 3.11+)
 3. Choose cuisines → restaurants filtered by cuisine, walking cap (1.5 km), min reviews (50)
 4. Plan route → BFS over ORS distance matrix finds optimal EV charging stops
 5. Generate itinerary → LLM builds Friday–Sunday plan using real weekend pattern
-6. Create brochure → markdown assembled → CodeMirror editor (editable) → pandoc + XeLaTeX → PDF
+6. Create brochure → markdown assembled → CodeMirror editor (editable) → Pandoc + selected renderer → PDF
 
 ---
 
@@ -42,14 +46,14 @@ backend/                  FastAPI (Python 3.11+)
 
 | Layer       | Technology                                |
 |-------------|-------------------------------------------|
-| Backend     | FastAPI, OpenRouter (GPT-4o-mini), httpx   |
+| Backend     | FastAPI, OpenRouter (content model + GPT Luna layout commands), httpx |
 | Maps        | Folium, OpenStreetMap, Leaflet, BeautifyIcon |
 | Routing     | OpenRouteService (ORS)                    |
 | Places      | Google Maps / Places API                  |
 | Search      | Tavily Search API                         |
 | Images      | Wikimedia Commons, Tavily, Bing           |
 | Frontend    | React 19, TypeScript 6, Vite 8, Tailwind 4, DaisyUI |
-| PDF         | Pandoc + XeLaTeX, Ghostscript compression |
+| PDF         | Pandoc + XeLaTeX (default) or Typst, Ghostscript compression |
 | Editor      | CodeMirror 6 (@codemirror/lang-markdown)   |
 | PDF Viewer  | EmbedPDF (@embedpdf/react-pdf-viewer)     |
 
@@ -101,7 +105,8 @@ All endpoints are at `http://localhost:8000`. API docs at `/docs`.
 | Method | Path                              | Description                                     |
 |--------|-----------------------------------|-------------------------------------------------|
 | POST   | `/api/brochure/markdown`          | Assemble brochure markdown (no PDF compilation) |
-| POST   | `/api/pdf`                        | Generate full PDF (pandoc → XeLaTeX)           |
+| POST   | `/api/brochure/layout-chat`       | Apply a constrained GPT Luna layout adjustment  |
+| POST   | `/api/pdf`                        | Generate PDF with configured XeLaTeX or Typst renderer |
 | GET    | `/api/pdf/preview/{filename}`     | Serve PDF for inline preview                    |
 | GET    | `/api/pdf/download-attachment/{filename}` | Download PDF as attachment           |
 | POST   | `/api/pdf/finalize`               | Copy PDF from temp/ → guides/{city}.pdf + clean temp |
@@ -129,10 +134,8 @@ The UI is a 6-step wizard — each tab depends on data from the previous step.
 
 **Components:**
 - `MarkdownEditor.tsx` — CodeMirror 6 (light theme, markdown language)
-- `PDFPreview.tsx` — EmbedPDF viewer (125% zoom, vertical scroll)
+- `PDFPreview.tsx` — EmbedPDF viewer (fit-to-width, vertical scroll)
 - `HtmlPreview.tsx` — Rendered markdown preview (react-markdown)
-
----
 
 ## Setup
 
@@ -140,36 +143,59 @@ The UI is a 6-step wizard — each tab depends on data from the previous step.
 
 - Python 3.11+
 - Node.js 18+
-- LaTeX: `texlive-xetex`, `texlive-latex-extra`, `pandoc`, `fonts-font-awesome`
-- Ghostscript (`gs`) for PDF compression (optional)
+- Pandoc and a XeLaTeX distribution for the default PDF renderer
+- Typst for the opt-in Typst PDF renderer
+- A Chromium-compatible browser for Playwright map screenshots
+- Ghostscript for PDF compression (optional)
 
-Install LaTeX packages:
+The app can run without the optional PDF tooling, but generating a full brochure PDF requires Pandoc, a configured renderer (XeLaTeX by default or Typst), and a browser available to Playwright.
+
+### Unix / macOS
+
+#### 1. Install system dependencies
+
+On Debian/Ubuntu, install the PDF dependencies with:
+
 ```bash
-sudo apt install texlive-xetex texlive-latex-extra pandoc fonts-font-awesome
+sudo apt update
+sudo apt install texlive-xetex texlive-latex-extra pandoc fonts-font-awesome ghostscript
 ```
 
-### Backend
+On macOS, install Pandoc, a TeX distribution that includes XeLaTeX (such as MacTeX), and optionally Ghostscript using your preferred package manager.
+
+For the optional Typst renderer, install Typst with your preferred package manager, for example `brew install typst`.
+
+#### 2. Create and install the backend environment
+
+From the project root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-uv pip install -r backend/requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+python -m playwright install chromium
 ```
 
+#### 3. Configure API keys
+
 Create `.env` in the project root:
+
 ```env
 OPENROUTER_API_KEY=...       # LLM provider (OpenAI-compatible)
+OPENROUTER_LAYOUT_MODEL=openai/gpt-6-luna  # Optional: constrained brochure layout chat
 TAVILY_API_KEY=...           # Web search + cover image search
 ORS_API_KEY=...              # OpenRouteService routing
 GOOGLE_MAPS_API_KEY=...      # Google Places API
 ```
 
-Start:
+#### 4. Start the backend
+
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
 
-### Frontend
+#### 5. Start the frontend in a second terminal
 
 ```bash
 cd frontend
@@ -177,7 +203,67 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:5173`. The backend is available at `http://localhost:8000`, with interactive API documentation at `http://localhost:8000/docs`.
+
+### Windows (PowerShell)
+
+#### 1. Install system dependencies
+
+- Install Python 3.11+ and Node.js 18+.
+- Install Pandoc.
+- Install a TeX distribution with XeLaTeX, such as MiKTeX or TeX Live.
+- Install Typst if you want to use the optional Typst renderer: `winget install typst`.
+- Optionally install Ghostscript for PDF compression.
+
+Ensure the installed command-line tools are on your `PATH`, then open a new PowerShell terminal.
+
+#### 2. Create and install the backend environment
+
+From the project root:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
+py -m pip install -r backend\requirements.txt
+py -m playwright install chromium
+```
+
+If PowerShell reports that script execution is disabled when activating the environment, apply this setting only to the current PowerShell session and retry activation:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+#### 3. Configure API keys
+
+Create a `.env` file in the project root:
+
+```env
+OPENROUTER_API_KEY=...       # LLM provider (OpenAI-compatible)
+OPENROUTER_LAYOUT_MODEL=openai/gpt-6-luna  # Optional: constrained brochure layout chat
+TAVILY_API_KEY=...           # Web search + cover image search
+ORS_API_KEY=...              # OpenRouteService routing
+GOOGLE_MAPS_API_KEY=...      # Google Places API
+```
+
+#### 4. Start the backend
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+py -m uvicorn backend.main:app --reload --port 8000
+```
+
+#### 5. Start the frontend in a second PowerShell terminal
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The backend is available at `http://localhost:8000`, with interactive API documentation at `http://localhost:8000/docs`.
 
 ---
 
@@ -187,7 +273,8 @@ Open `http://localhost:5173`.
 |-----------------------------|-----------------------------------|-------------------------------------|
 | `HOME_ADDRESS`              | Heirweg 85A, 9190 Stekene, Belgium | Departure address for EV routing   |
 | `ALLOWED_CUISINES`          | Local, Italian, Croatian, Grill, Steakhouse, Seafood | Only these appear in brochures |
-| `WALK_DISTANCE_MAX_METERS`  | 1500                             | Max walking distance ~20 min       |
+| `RESTAURANT_SEARCH_RADIUS`  | 3000                             | Google Places search radius from hotel (m) |
+| `WALK_DISTANCE_MAX_METERS`  | 2500                             | Maximum straight-line hotel distance (m); taxi is acceptable |
 | `REVIEW_MINIMUM`            | 50                               | Minimum Google reviews count        |
 | `BATTERY_CAPACITY_KWH`      | 78.0                             | EV battery capacity                 |
 | `CONSUMPTION_KWH_PER_100KM` | 17.31                            | EV consumption rate                 |
@@ -197,8 +284,8 @@ Open `http://localhost:5173`.
 
 ## PDF Pipeline
 
-1. `build_markdown(data)` — assembles markdown from trip data with `\newpage` section breaks
-2. `generate_pdf(md, city, ...)` — runs `pandoc` with `travel_template.tex`:
+1. `build_markdown(data)` — assembles editable brochure Markdown and inserts `<!-- pagebreak -->` directives before brochure sections and restaurant cuisine groups. The Restaurant tab itself remains free of page-break directives.
+2. `generate_pdf(md, city, ...)` — runs Pandoc with the configured renderer:
    - Inject cover image (JPEG/PNG only)
    - Screenshot restaurant map via Playwright Chromium (embedded as PNG)
    - Download and embed hotel photo
@@ -206,7 +293,34 @@ Open `http://localhost:5173`.
 
 PDFs are saved to `guides/temp/` during generation. Call `POST /api/pdf/finalize` to copy to `guides/{city}.pdf` and clean the temp directory.
 
-### LaTeX Template (`travel_template.tex`)
+### Renderer configuration and rollback
+
+The default remains the established XeLaTeX renderer:
+
+```env
+PDF_ENGINE=xelatex
+```
+
+To evaluate the Typst layout, install Typst and set:
+
+```env
+PDF_ENGINE=typst
+```
+
+Switching `PDF_ENGINE` back to `xelatex` is the immediate rollback path. The XeLaTeX template remains at `backend/templates/travel_template.tex`; the Typst template is `backend/templates/travel_template.typ`.
+
+The Typst template builds in these layout defaults:
+
+- hotel photos are centered;
+- restaurant maps are centered;
+- restaurant cards stay together when a complete card fits on a page;
+- hotel photos and restaurant maps are centered;
+- restaurant cards stay together when a complete card fits on a page;
+- restaurant cuisine groups start with an editable page-break directive.
+
+The Brochure editor includes a small GPT Luna layout assistant for image size/alignment, restaurant spacing, and restaurant-card pagination changes. Page breaks are deliberately manual: edit the visible `<!-- pagebreak -->` comments in the brochure Markdown, then regenerate the preview. These directives are hidden in rendered previews and are never included in the Restaurants tab. Use **Undo** to restore prior chat-applied layout settings.
+
+### XeLaTeX Template (`travel_template.tex`)
 
 - DBG Travel branded title page with logo and cover image
 - `tocdepth=2` (no subsubsections in TOC)

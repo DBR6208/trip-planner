@@ -1,14 +1,12 @@
-import { PDFViewer, ScrollStrategy } from "@embedpdf/react-pdf-viewer";
+import { PDFViewer, ScrollStrategy, ZoomMode } from "@embedpdf/react-pdf-viewer";
 
 interface Props {
   pdfUrl: string;
   /** Called when user wants to go back to the markdown editor */
   onBack?: () => void;
-  /** Called when user wants to download the PDF */
-  onDownload?: () => void;
 }
 
-export default function PDFPreview({ pdfUrl, onBack, onDownload }: Props) {
+export default function PDFPreview({ pdfUrl, onBack }: Props) {
   return (
     <div className="panel p-4 h-full min-h-0 flex flex-col">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
@@ -19,11 +17,6 @@ export default function PDFPreview({ pdfUrl, onBack, onDownload }: Props) {
           {onBack && (
             <button onClick={onBack} className="btn btn-ghost btn-xs gap-1">
               Back to Edit
-            </button>
-          )}
-          {onDownload && (
-            <button onClick={onDownload} className="btn btn-primary btn-xs gap-1">
-              Download PDF
             </button>
           )}
         </div>
@@ -37,7 +30,7 @@ export default function PDFPreview({ pdfUrl, onBack, onDownload }: Props) {
             tabBar: "never",
             disabledCategories: ["annotation", "redaction", "insert"],
             zoom: {
-              defaultZoomLevel: 1.25,
+              defaultZoomLevel: ZoomMode.FitWidth,
             },
             scroll: {
               defaultStrategy: ScrollStrategy.Vertical,

@@ -146,6 +146,17 @@ class PDFRequest(BaseModel):
     restaurant_map_html: str | None = None
     hotel_photo_url: str | None = None
     markdown_text: str | None = None  # if provided, skip build_markdown and use this
+    layout_settings: dict | None = None
+
+
+class LayoutChatRequest(BaseModel):
+    message: str
+    current_settings: dict | None = None
+
+
+class LayoutChatResponse(BaseModel):
+    settings: dict
+    summary: str
 
 
 class CoverImagesRequest(BaseModel):
@@ -514,6 +525,7 @@ def generate_pdf(req: PDFRequest):
             restaurant_map_html=restaurant_map_html,
             hotel_photo_url=hotel_photo_url,
             restaurant_data=req.restaurant_data,
+            layout_settings=req.layout_settings,
         )
         # Compress the generated PDF with Ghostscript
         try:
@@ -525,10 +537,23 @@ def generate_pdf(req: PDFRequest):
             "download_url": f"/api/pdf/download-attachment/{os.path.basename(pdf_path)}",
             "preview_url": f"/api/pdf/preview/{os.path.basename(pdf_path)}",
             "markdown": final_markdown,
+            "engine": pdf_svc.current_engine(),
         }
     except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
         # Client disconnected during generation — PDF was saved, just return silently
         return {"status": "generated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/brochure/layout-chat", response_model=LayoutChatResponse)
+def update_brochure_layout(req: LayoutChatRequest):
+    """Interpret a small brochure-layout request using constrained GPT Luna output."""
+    try:
+        settings, summary = pdf_svc.apply_layout_request(req.message, req.current_settings)
+        return LayoutChatResponse(settings=settings, summary=summary)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

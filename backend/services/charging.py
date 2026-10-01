@@ -180,7 +180,7 @@ def _load_stations() -> gpd.GeoDataFrame | None:
 def _find_stations_along_route(
     route_coords: list, gdf: gpd.GeoDataFrame, buffer_m: int = 5000
 ) -> list[dict]:
-    """Find charging stations within buffer of route line (5km default)."""
+    """Find stations near the route, ordered from departure to destination."""
     route_line = shapely.geometry.LineString(route_coords)
     buffered = route_line.buffer(buffer_m / 111000)  # approx degree conversion
     nearby = gdf[gdf.geometry.intersects(buffered)]
@@ -194,6 +194,16 @@ def _find_stations_along_route(
                 f"{s.get('Address', '')}, {s.get('Zip_Code', '')} {s.get('City', '')}".strip(", ")
             ),
         })
+
+    # ``route_coords`` follow the ORS GeoJSON convention: [longitude, latitude].
+    # Sorting by route projection keeps the selector in driving order, including
+    # for routes that curve or briefly head back toward the departure point.
+    results.sort(
+        key=lambda station: route_line.project(
+            shapely.geometry.Point(station["longitude"], station["latitude"]),
+            normalized=True,
+        )
+    )
     return results
 
 
@@ -531,6 +541,8 @@ def plan_trip_with_stops(
     """Plan multi-stop trip with charging stops.
 
     Returns markdown leg tables, charging station lists, map HTML, and trip summaries.
+    Either direction may omit charging stops, in which case it is planned as a
+    direct route.
     """
     start_coords = geo.get_coordinates(start_address)
     end_coords = geo.get_coordinates(end_address)

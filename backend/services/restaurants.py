@@ -20,6 +20,16 @@ CUISINE_COLORS = {
 }
 
 
+def _clean_restaurant_name(name: str | None) -> str:
+    """Remove accidental list numbering returned by a place-search provider."""
+    return re.sub(r"^\s*\d+[.)\-:]\s*", "", name or "").strip()
+
+
+def _clean_restaurant_description(description: str | None) -> str:
+    """Remove a copied leading list number from generated restaurant text."""
+    return re.sub(r"^\s*\d+[.)\-:]\s*", "", description or "").strip()
+
+
 def _cuisine_color(cuisine: str) -> str:
     """Get the map marker color for a cuisine type."""
     return CUISINE_COLORS.get(cuisine, "#757575")
@@ -44,13 +54,64 @@ def _get_place_details(place_id: str) -> dict:
         return {}
 
 
-def _is_cuisine_excluded(name: str, cuisine_label: str) -> bool:
-    """Check if a restaurant name or cuisine type matches excluded keywords."""
-    text = f"{name} {cuisine_label}".lower()
-    for kw in config.EXCLUDED_CUISINE_KEYWORDS:
-        if kw in text:
-            return True
-    return False
+def _excluded_cuisine_terms(*texts: str | None) -> set[str]:
+    """Return excluded cuisine terms found in supplied restaurant evidence."""
+    text = " ".join(part for part in texts if part).casefold()
+    return {
+        keyword
+        for keyword in config.EXCLUDED_CUISINE_KEYWORDS
+        if re.search(rf"(?<!\w){re.escape(keyword.casefold())}(?!\w)", text)
+    }
+
+
+def _is_cuisine_excluded(*texts: str | None) -> bool:
+    """Check restaurant metadata or verified evidence for excluded cuisine terms."""
+    return bool(_excluded_cuisine_terms(*texts))
+
+
+def _get_cuisine_evidence(
+    restaurant: dict,
+    city: str | None,
+    cache: dict[str, str],
+) -> str:
+    """Find independent web evidence about a candidate restaurant's cuisine.
+
+    Google Places text search determines only the initial candidate set. This
+    second step checks Tavily result titles and snippets before the candidate is
+    presented as one of the app's allowed cuisine categories.
+    """
+    name = restaurant.get("name", "").strip()
+    address = restaurant.get("address", "").strip()
+    cache_key = f"{name.casefold()}|{address.casefold()}"
+    if cache_key in cache:
+        return cache[cache_key]
+    if not name or not config.TAVILY_API_KEY:
+        cache[cache_key] = ""
+        return ""
+
+    try:
+        from tavily import TavilyClient
+
+        location = address or city or ""
+        response = TavilyClient(api_key=config.TAVILY_API_KEY).search(
+            query=f'"{name}" "{location}" restaurant menu cuisine',
+            search_depth="basic",
+            max_results=3,
+            include_answer=False,
+        )
+        chunks = []
+        for result in response.get("results", []):
+            title = result.get("title", "")
+            content = result.get("content", "")
+            if title or content:
+                chunks.append(f"{title} {content}")
+        evidence = "\n".join(chunks)
+    except Exception as exc:
+        print(f"Cuisine verification failed for '{name}': {exc}")
+        evidence = ""
+
+    cache[cache_key] = evidence
+    return evidence
 
 
 def find_restaurants(
@@ -68,6 +129,7 @@ def find_restaurants(
     """
     all_restaurants = []
     seen_names = set()
+    cuisine_evidence_cache: dict[str, str] = {}
 
     for cuisine in cuisines:
         query_parts = [cuisine, "restaurant"]
@@ -89,7 +151,7 @@ def find_restaurants(
         for p in results.get("results", [])[: config.MAX_RESULTS_TO_PROCESS]:
             loc = p.get("geometry", {}).get("location", {})
             places.append({
-                "name": p.get("name"),
+                "name": _clean_restaurant_name(p.get("name")),
                 "address": p.get("formatted_address", "N/A"),
                 "latitude": loc.get("lat"),
                 "longitude": loc.get("lng"),
@@ -116,8 +178,9 @@ def find_restaurants(
             if r.get("permanently_closed"):
                 continue
 
-            # Filter: cuisine exclusion keywords
-            if _is_cuisine_excluded(r["name"], cuisine):
+            # First cuisine screen: reject obvious terms in the result name,
+            # selected label, or restaurant website URL.
+            if _is_cuisine_excluded(r["name"], cuisine, r.get("website")):
                 continue
 
             # Filter: review count threshold
@@ -131,6 +194,13 @@ def find_restaurants(
                 r["latitude"], r["longitude"],
             )
             if dist_m > config.WALK_DISTANCE_MAX_METERS:
+                continue
+
+            # Second cuisine screen: verify search-query labels against
+            # independent restaurant/menu web-search evidence. This catches,
+            # for example, a Chinese seafood venue returned for "Seafood".
+            cuisine_evidence = _get_cuisine_evidence(r, city, cuisine_evidence_cache)
+            if _is_cuisine_excluded(cuisine_evidence):
                 continue
 
             r["distance_meters"] = dist_m
@@ -150,11 +220,15 @@ def _short_description(r: dict) -> str:
         f"Write ONE short, concrete sentence describing the {cuisine} restaurant '{name}' "
         f"(rating {rating}/5, {reviews} reviews). Describe the food, ambiance and what it is "
         "known for, in a practical travel tone. No lead-in, no closing remark, no emoji, no "
-        "prices or hours unless absolutely certain. Max 25 words. Output only the sentence."
+        "prices or hours unless absolutely certain. Do not mention Asian, Chinese, Turkish, halal, "
+        "fusion, or any other excluded cuisine/style. Max 25 words. Output only the sentence."
     )
     try:
         desc = llm.generate(prompt, max_tokens=80).strip().strip('"').strip()
-        return desc[:200]
+        # The candidate should already have passed verified cuisine filtering.
+        # Do not show a description that nonetheless introduces a blocked term.
+        desc = _clean_restaurant_description(desc)
+        return "" if _is_cuisine_excluded(desc) else desc[:200]
     except Exception:
         return ""
 
@@ -175,11 +249,15 @@ def format_restaurants(restaurants: list[dict]) -> str:
 
     sections = []
     for cuisine, rest_list in by_cuisine.items():
-        sections.append(f"\\newpage\n\n## {cuisine} Restaurants\n\n---")
+        # This output is also rendered in the Restaurants tab and supplied to
+        # the itinerary generator, so it must not contain brochure-only page
+        # break directives. The brochure builder adds those separately.
+        sections.append(f"## {cuisine} Restaurants\n\n---")
         for r in rest_list:
+            name = _clean_restaurant_name(r.get("name"))
             maps_url = geo.generate_maps_url(r.get("place_id", ""), "restaurant")
-            desc = r.get("description") or _short_description(r)
-            lines = [f"**{r['name']}** ({cuisine})"]
+            desc = _clean_restaurant_description(r.get("description")) or _short_description(r)
+            lines = [f"**{name}** ({cuisine})", ""]
             if desc:
                 lines.append(desc)
                 lines.append("")
@@ -191,7 +269,7 @@ def format_restaurants(restaurants: list[dict]) -> str:
                 f"- *Rating:* {r.get('rating', 'N/A')} ({r.get('user_ratings_total', 0)} reviews)"
             )
             if r.get("website"):
-                lines.append(f"- *Website:* [{r['name']}]({r['website']})")
+                lines.append(f"- *Website:* [{name}]({r['website']})")
             if maps_url:
                 lines.append(f"- *Google Maps:* [View on Map]({maps_url})")
             lines.append("---")
