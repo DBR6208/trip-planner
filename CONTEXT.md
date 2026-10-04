@@ -27,9 +27,7 @@ Run from the project root (activate `.venv` first).
 
 ## Branches
 
-- `main` — active development
-- `feature/typst-pdf-hitl` — Typst renderer and brochure-layout work
-- `origin/modernization/phase-0-baseline` — legacy reference
+- `main` — the only branch (local and on GitHub). The Typst renderer work from `feature/typst-pdf-hitl` was merged into it and that branch was deleted on 2026-10-04.
 
 ## Git Remotes
 
@@ -92,7 +90,7 @@ Run from the project root (activate `.venv` first).
 - **2026-09-11**: BFS route planner replaces greedy algorithm
 - **2026-09-02**: All 15 REQUIREMENTS.md issues resolved
 - **2026-10-01**: Added opt-in Typst renderer with XeLaTeX rollback, fit-to-width PDF preview, manual hidden brochure page-break directives, broader restaurant radius, and stronger cuisine/name cleanup.
-- **2026-10-04**: Restaurant selection rebuilt (wide search, chain/bar/excluded-cuisine filters, single LLM classification, 2.5 km, at least one cuisine required, 8 cuisines, Belgium + neighbours); layout chat removed; hand-editable `brochure.typ`/`.tex` with rebuild endpoint; PDF map legend follows the selection; code cleanup (unused files, imports, endpoint, npm packages; `hotels.py` page-token bug fixed). Removed files are kept in `work/` for review.
+- **2026-10-04**: Restaurant selection rebuilt (wide search, chain/bar/excluded-cuisine filters, single LLM classification, 2.5 km, at least one cuisine required, 8 cuisines, Belgium + neighbours); layout chat removed; hand-editable `brochure.typ`/`.tex` with rebuild endpoint; PDF map legend follows the selection; code cleanup (unused files, imports, endpoint, npm packages; `hotels.py` page-token bug fixed). Removed files are kept in `work/` for review. The `feature/typst-pdf-hitl` branch was merged into `main` and deleted (local + GitHub).
 
 ## File Structure (relevant files)
 
