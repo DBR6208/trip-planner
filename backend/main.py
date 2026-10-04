@@ -6,13 +6,13 @@ import tempfile
 import traceback
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .config import HOME_ADDRESS, OUTPUT_DIR, WEEKEND_GUIDES_DIR, TEMP_GUIDES_DIR
+from .config import HOME_ADDRESS, WEEKEND_GUIDES_DIR, TEMP_GUIDES_DIR
 from .services import (
     city_guide as guide_svc,
     cover_images as cover_svc,
@@ -35,8 +35,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Serve static files (logo, etc.)
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
@@ -146,17 +144,6 @@ class PDFRequest(BaseModel):
     restaurant_map_html: str | None = None
     hotel_photo_url: str | None = None
     markdown_text: str | None = None  # if provided, skip build_markdown and use this
-    layout_settings: dict | None = None
-
-
-class LayoutChatRequest(BaseModel):
-    message: str
-    current_settings: dict | None = None
-
-
-class LayoutChatResponse(BaseModel):
-    settings: dict
-    summary: str
 
 
 class CoverImagesRequest(BaseModel):
@@ -169,19 +156,6 @@ class CoverImageInfo(BaseModel):
     thumb: str
     source: str
     title: str
-
-
-class BrochureMarkdownRequest(BaseModel):
-    city: str
-    country: str
-    city_guide: str
-    tourist_office: str
-    hotel: str
-    restaurants: str
-    restaurant_data: list[dict] = []
-    journey_out: str
-    journey_home: str
-    planner: str
 
 
 class CoverImagesResponse(BaseModel):
@@ -296,6 +270,12 @@ def describe_hotel(req: HotelDescriptionRequest):
 @app.post("/api/restaurants", response_model=RestaurantSearchResponse)
 def search_restaurants(req: RestaurantSearchRequest):
     """Find restaurants near hotel with cuisine/walking/review filters + map."""
+    # Only the cuisines the user ticked are searched; there is no "all" fallback.
+    cuisines = [c for c in req.cuisines if c in restaurant_svc.CUISINE_COLORS]
+    if not cuisines:
+        raise HTTPException(
+            status_code=400, detail="Please select at least one cuisine."
+        )
     try:
         coords = geo.get_google_coords(req.hotel_address)
         if not coords:
@@ -303,7 +283,6 @@ def search_restaurants(req: RestaurantSearchRequest):
                 restaurants=[], formatted="Could not locate hotel address."
             )
         city = geo.get_city_from_coords(coords[0], coords[1]) or ""
-        cuisines = req.cuisines or ["Local", "Italian", "Croatian", "Grill", "Steakhouse", "Seafood"]
         restaurants = restaurant_svc.find_restaurants(coords, cuisines, city)
         formatted = restaurant_svc.format_restaurants(restaurants)
 
@@ -473,25 +452,6 @@ def serve_cover_image(filename: str):
     return FileResponse(filepath)
 
 
-@app.post("/api/brochure/markdown")
-def get_brochure_markdown(req: BrochureMarkdownRequest):
-    """Assemble the brochure markdown from trip data — no PDF compilation."""
-    try:
-        data = {
-            "city_guide": req.city_guide,
-            "tourist_office": req.tourist_office,
-            "hotel": req.hotel,
-            "restaurants": req.restaurants,
-            "journey_out": req.journey_out,
-            "journey_home": req.journey_home,
-            "planner": req.planner,
-        }
-        md = pdf_svc.build_markdown(data)
-        return {"markdown": md}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/api/pdf")
 def generate_pdf(req: PDFRequest):
     """Generate full PDF brochure from all data."""
@@ -525,19 +485,21 @@ def generate_pdf(req: PDFRequest):
             restaurant_map_html=restaurant_map_html,
             hotel_photo_url=hotel_photo_url,
             restaurant_data=req.restaurant_data,
-            layout_settings=req.layout_settings,
         )
         # Compress the generated PDF with Ghostscript
         try:
             pdf_svc.compress_pdf(pdf_path)
         except Exception:
             pass  # Compression is optional; keep the uncompressed PDF
+        source_file = pdf_svc.find_source_file(req.city)
         return {
             "pdf_path": pdf_path,
             "download_url": f"/api/pdf/download-attachment/{os.path.basename(pdf_path)}",
             "preview_url": f"/api/pdf/preview/{os.path.basename(pdf_path)}",
             "markdown": final_markdown,
             "engine": pdf_svc.current_engine(),
+            "source_dir": os.path.abspath(pdf_svc.source_dir_for(req.city)),
+            "source_file": os.path.basename(source_file) if source_file else "",
         }
     except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
         # Client disconnected during generation — PDF was saved, just return silently
@@ -546,16 +508,46 @@ def generate_pdf(req: PDFRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/brochure/layout-chat", response_model=LayoutChatResponse)
-def update_brochure_layout(req: LayoutChatRequest):
-    """Interpret a small brochure-layout request using constrained GPT Luna output."""
+class RebuildRequest(BaseModel):
+    city: str
+
+
+@app.post("/api/pdf/rebuild")
+def rebuild_pdf(req: RebuildRequest):
+    """Recompile the hand-edited brochure.typ / brochure.tex into a new PDF."""
     try:
-        settings, summary = pdf_svc.apply_layout_request(req.message, req.current_settings)
-        return LayoutChatResponse(settings=settings, summary=summary)
-    except ValueError as e:
+        pdf_path, source_name = pdf_svc.rebuild_from_source(req.city)
+        try:
+            pdf_svc.compress_pdf(pdf_path)
+        except Exception:
+            pass
+        filename = os.path.basename(pdf_path)
+        return {
+            "download_url": f"/api/pdf/download-attachment/{filename}",
+            "preview_url": f"/api/pdf/preview/{filename}",
+            "engine": pdf_svc.current_engine(),
+            "source_dir": os.path.abspath(pdf_svc.source_dir_for(req.city)),
+            "source_file": source_name,
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        # Compiler errors (with line details) go straight to the user.
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/pdf/source")
+def download_source(city: str):
+    """Download the generated brochure source and its images as a zip."""
+    folder = pdf_svc.source_dir_for(city)
+    if not pdf_svc.find_source_file(city):
+        raise HTTPException(status_code=404, detail="No brochure source found. Generate the PDF first.")
+    import shutil as _shutil
+    archive_base = os.path.join(tempfile.gettempdir(), f"brochure_source_{os.path.basename(folder)}")
+    archive = _shutil.make_archive(archive_base, "zip", folder)
+    return FileResponse(archive, media_type="application/zip", filename=f"brochure_source_{os.path.basename(folder)}.zip")
 
 
 @app.get("/api/pdf/preview/{filename}")
@@ -583,16 +575,13 @@ def download_pdf_attachment(filename: str):
 
 
 def _resolve_pdf_path(filename: str) -> str:
-    """Find a PDF in guides/temp/, guides/, or brochures/."""
+    """Find a PDF in guides/temp/ or guides/."""
     temp_path = os.path.join(TEMP_GUIDES_DIR, filename)
     guides_path = os.path.join(WEEKEND_GUIDES_DIR, filename)
-    brochures_path = os.path.join(OUTPUT_DIR, filename)
     if os.path.exists(temp_path):
         return temp_path
     elif os.path.exists(guides_path):
         return guides_path
-    elif os.path.exists(brochures_path):
-        return brochures_path
     else:
         raise HTTPException(status_code=404, detail="PDF not found")
 

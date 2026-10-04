@@ -1,10 +1,5 @@
 // Shared types matching backend API
 
-export interface CityGuideReq {
-  city: string;
-  country: string;
-}
-
 export interface CityGuideRes {
   city_guide: string;
   tourist_office: string;
@@ -50,10 +45,6 @@ export interface HotelMapRes {
   map_html: string;
 }
 
-export interface HotelDescReq {
-  hotel: Hotel;
-}
-
 export interface HotelDescRes {
   description: string;
   formatted: string;
@@ -74,12 +65,6 @@ export interface Restaurant {
   distance_meters: number;
 }
 
-export interface RestaurantSearchReq {
-  hotel_address: string;
-  cuisines: string[];
-  hotel: Hotel | null;
-}
-
 export interface RestaurantSearchRes {
   restaurants: Restaurant[];
   formatted: string;
@@ -91,12 +76,6 @@ export interface ChargingStation {
   latitude: number;
   longitude: number;
   location: string;
-}
-
-export interface RouteReq {
-  start_address: string;
-  end_address: string;
-  start_battery: number;
 }
 
 export interface RouteRes {
@@ -130,14 +109,6 @@ export interface PlanTripRes {
   return: LegPlan;
 }
 
-export interface PlannerReq {
-  city: string;
-  hotel_name: string;
-  hotel_address: string;
-  restaurant_list: string;
-  search_context: string;
-}
-
 export interface PlannerRes {
   itinerary: string;
 }
@@ -158,7 +129,6 @@ export interface PDFReq {
   restaurant_map_html?: string;
   hotel_photo_url?: string;
   markdown_text?: string;
-  layout_settings?: BrochureLayoutSettings;
 }
 
 export interface PDFRes {
@@ -167,20 +137,16 @@ export interface PDFRes {
   preview_url: string;
   markdown: string;
   engine: string;
+  source_dir: string;
+  source_file: string;
 }
 
-export interface BrochureLayoutSettings {
-  hotel_image_alignment: "center" | "left" | "right";
-  hotel_image_width_percent: number;
-  restaurant_map_width_percent: number;
-  keep_restaurant_cards_together: boolean;
-  restaurant_heading_gap_pt: number;
-  restaurant_card_gap_pt: number;
-}
-
-export interface LayoutChatRes {
-  settings: BrochureLayoutSettings;
-  summary: string;
+export interface RebuildRes {
+  download_url: string;
+  preview_url: string;
+  engine: string;
+  source_dir: string;
+  source_file: string;
 }
 
 export interface CoverImageInfo {
@@ -193,27 +159,3 @@ export interface CoverImageInfo {
 export interface CoverImagesRes {
   images: CoverImageInfo[];
 }
-
-export interface BrochureMarkdownReq {
-  city: string;
-  country: string;
-  city_guide: string;
-  tourist_office: string;
-  hotel: string;
-  restaurants: string;
-  restaurant_data: Restaurant[];
-  journey_out: string;
-  journey_home: string;
-  planner: string;
-}
-
-export const ALLOWED_CUISINES = [
-  "Local",
-  "Italian",
-  "Croatian",
-  "Grill",
-  "Steakhouse",
-  "Seafood",
-] as const;
-
-export type Cuisine = (typeof ALLOWED_CUISINES)[number];

@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -14,8 +14,17 @@ import pypandoc
 
 from .. import config
 from . import cover_images as cover_svc
-from . import geo
-from . import layout_chat
+from . import restaurants as restaurants_svc
+
+# Fixed brochure layout values (previously adjustable through the layout chat).
+LAYOUT_SETTINGS = {
+    "hotel_image_alignment": "center",
+    "hotel_image_width_percent": 45,
+    "restaurant_map_width_percent": 100,
+    "keep_restaurant_cards_together": True,
+    "restaurant_heading_gap_pt": 14,
+    "restaurant_card_gap_pt": 12,
+}
 
 
 if os.name == "nt" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
@@ -28,33 +37,93 @@ if os.name == "nt" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
         pass
 
 
-def _latex_escape(text: str) -> str:
-    """Escape text for safe use inside LaTeX content."""
-    replacements = {
-        "\\": r"\textbackslash{}",
-        "&": r"\&",
-        "%": r"\%",
-        "$": r"\$",
-        "#": r"\#",
-        "_": r"\_",
-        "{": r"\{",
-        "}": r"\}",
-        "~": r"\textasciitilde{}",
-        "^": r"\textasciicircum{}",
-    }
-    return "".join(replacements.get(ch, ch) for ch in text)
+def _safe_name(text: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9]+", "_", text or "").strip("_").lower() or "brochure"
 
 
-def _latex_url(url: str) -> str:
-    """Wrap a URL so it can be used safely inside \\href."""
-    return r"\detokenize{" + url + "}"
+def source_dir_for(city: str) -> str:
+    """Persistent, hand-editable source folder for a city's brochure."""
+    return os.path.join(config.WEEKEND_GUIDES_DIR, "source", _safe_name(city))
+
+
+@contextmanager
+def _source_workdir(city: str):
+    """Fresh persistent folder for this brochure's source files and images.
+
+    Unlike a temp dir it is kept after the PDF is built, so the generated
+    .typ/.tex and its images can be edited by hand and rebuilt later.
+    """
+    path = source_dir_for(city)
+    if os.path.isdir(path):
+        # Keep the previous version (one level) so hand edits are never lost
+        # when the PDF is regenerated from the Markdown.
+        backup = path + "_previous"
+        shutil.rmtree(backup, ignore_errors=True)
+        shutil.move(path, backup)
+    os.makedirs(path, exist_ok=True)
+    yield path
+
+
+def find_source_file(city: str) -> str | None:
+    """Return the editable brochure.typ / brochure.tex for a city, if any."""
+    folder = source_dir_for(city)
+    for name in ("brochure.typ", "brochure.tex"):
+        candidate = os.path.join(folder, name)
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def rebuild_from_source(city: str) -> tuple[str, str]:
+    """Compile the (possibly hand-edited) brochure source into a new PDF.
+
+    Returns (pdf_path, source_filename). Raises FileNotFoundError when no
+    source exists yet and RuntimeError with the compiler output on errors.
+    """
+    source = find_source_file(city)
+    if not source:
+        raise FileNotFoundError(
+            "No brochure source found for this city. Generate the PDF first."
+        )
+    os.makedirs(config.TEMP_GUIDES_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_pdf = os.path.join(
+        config.TEMP_GUIDES_DIR, f"weekend_guide_{_safe_name(city)}_{timestamp}.pdf"
+    )
+    folder = os.path.dirname(source)
+    if source.endswith(".typ"):
+        _compile_typst(source, output_pdf, folder)
+    else:
+        _compile_latex(source, output_pdf)
+    return output_pdf, os.path.basename(source)
+
+
+def _compile_latex(tex_file: str, output_pdf: str) -> None:
+    """Compile a .tex file with XeLaTeX (two passes for the table of contents)."""
+    folder = os.path.dirname(tex_file)
+    name = os.path.basename(tex_file)
+    log = ""
+    for _ in range(2):
+        result = subprocess.run(
+            ["xelatex", "-interaction=nonstopmode", "-halt-on-error", name],
+            cwd=folder, capture_output=True, text=True, timeout=300,
+            encoding="utf-8", errors="replace",
+        )
+        log = (result.stdout or "") + (result.stderr or "")
+        if result.returncode != 0:
+            lines = [ln for ln in log.splitlines() if ln.startswith("!")]
+            details = "\n".join(lines[:5]) or log[-1500:]
+            raise RuntimeError(f"XeLaTeX compilation failed: {details}")
+    built = os.path.splitext(tex_file)[0] + ".pdf"
+    if not os.path.exists(built):
+        raise RuntimeError("XeLaTeX finished but produced no PDF")
+    shutil.copy(built, output_pdf)
 
 
 def _fetch_city_cover_image(city: str, save_dir: str) -> str | None:
     """Fallback: use Tavily to find a city cover image, download it, return path."""
     try:
         from tavily import TavilyClient
-        from .. import config
 
         tavily_client = TavilyClient(api_key=config.TAVILY_API_KEY)
         query = f"{city} skyline landmark cityscape architecture photography"
@@ -223,7 +292,6 @@ def generate_pdf(
     restaurant_map_html: str | None = None,
     hotel_photo_url: str | None = None,
     restaurant_data: list[dict] | None = None,
-    layout_settings: dict | None = None,
 ) -> tuple[str, str]:
     """Convert markdown to PDF using the configured Pandoc renderer.
 
@@ -241,7 +309,7 @@ def generate_pdf(
     engine = config.PDF_ENGINE
     if engine not in {"xelatex", "typst"}:
         raise ValueError("PDF_ENGINE must be either 'xelatex' or 'typst'")
-    layout = layout_chat.normalize_layout_settings(layout_settings)
+    layout = LAYOUT_SETTINGS
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Ensure temp directory exists
@@ -287,8 +355,8 @@ citytitle: "{city_title} Weekend Travel Guide"
         """Normalize a filesystem path for Pandoc markdown on all platforms."""
         return os.path.abspath(path).replace("\\", "/")
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Take restaurant map screenshot into tmpdir
+    with _source_workdir(city) as tmpdir:
+        # Take restaurant map screenshot into the source folder
         map_markdown = ""
         if restaurant_map_html:
             map_png = _screenshot_map_html(restaurant_map_html, tmpdir, "map-restaurants.png")
@@ -296,7 +364,10 @@ citytitle: "{city_title} Weekend Travel Guide"
                 # Keep the map in the temp directory and reference it by name.
                 # A hyphenated filename avoids Pandoc escaping issues.
                 map_markdown = _build_map_markdown(
-                    os.path.basename(map_png), engine, layout["restaurant_map_width_percent"]
+                    os.path.basename(map_png),
+                    engine,
+                    layout["restaurant_map_width_percent"],
+                    _legend_cuisines(restaurant_data),
                 )
         hotel_image_path = None
         hotel_md_ref = None
@@ -409,7 +480,8 @@ citytitle: "{city_title} Weekend Travel Guide"
                     import cairosvg
                     logo_png = os.path.join(tmpdir, "logo.png")
                     cairosvg.svg2png(url=logo_path, write_to=logo_png, output_width=128, output_height=128)
-                    logo_dest = _markdown_path(logo_png)
+                    # Relative name: the .tex is compiled inside this folder.
+                    logo_dest = os.path.basename(logo_png)
             except Exception as e:
                 print(f"WARNING: Logo conversion failed: {e} — skipping logo in PDF")
                 logo_dest = None
@@ -441,30 +513,35 @@ citytitle: "{city_title} Weekend Travel Guide"
                 # template variables, which makes XeLaTeX look for cover\_image.*.
                 img_dest = os.path.join(tmpdir, f"cover-image{img_ext}")
                 shutil.copy(cover_path, img_dest)
-                cover_dest = os.path.basename(img_dest) if engine == "typst" else _markdown_path(img_dest)
+                # Relative name: the source is compiled inside this folder.
+                cover_dest = os.path.basename(img_dest)
                 extra_args.append(f"--variable=cover-image:{cover_dest}")
 
+        # Write the editable source (brochure.typ / brochure.tex) into the
+        # persistent folder, then compile it. The user can edit this file by
+        # hand and rebuild it later with rebuild_from_source().
         try:
             if engine == "xelatex":
+                source_file = os.path.join(tmpdir, "brochure.tex")
                 pypandoc.convert_file(
-                    md_file, "pdf", format="markdown",
-                    outputfile=output_pdf,
-                    extra_args=["--pdf-engine=xelatex", *extra_args],
+                    md_file, "latex", format="markdown",
+                    outputfile=source_file, extra_args=extra_args,
                 )
+                _compile_latex(source_file, output_pdf)
             else:
-                typst_file = os.path.join(tmpdir, "guide.typ")
+                source_file = os.path.join(tmpdir, "brochure.typ")
                 typst_args = [
                     *extra_args,
                     f"--lua-filter={_typst_layout_filter_path()}",
                 ]
                 pypandoc.convert_file(
                     md_file, "typst", format="markdown",
-                    outputfile=typst_file, extra_args=typst_args,
+                    outputfile=source_file, extra_args=typst_args,
                 )
                 _ensure_no_layout_markers(
-                    Path(typst_file).read_text(encoding="utf-8"), "generated Typst source"
+                    Path(source_file).read_text(encoding="utf-8"), "generated Typst source"
                 )
-                _compile_typst(typst_file, output_pdf, tmpdir)
+                _compile_typst(source_file, output_pdf, tmpdir)
         except Exception as e:
             print(f"PDF conversion failed for {md_file} using {engine}: {e}")
             raise
@@ -475,11 +552,6 @@ citytitle: "{city_title} Weekend Travel Guide"
 def current_engine() -> str:
     """Expose the active renderer for the API/UI without duplicating config access."""
     return config.PDF_ENGINE
-
-
-def apply_layout_request(message: str, current_settings: dict | None) -> tuple[dict, str]:
-    """Delegate constrained natural-language layout interpretation to GPT Luna."""
-    return layout_chat.apply_layout_request(message, current_settings)
 
 
 def compress_pdf(pdf_path: str) -> None:
@@ -526,36 +598,63 @@ def _remove_first_title(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _build_map_markdown(map_path: str, engine: str, width_percent: int) -> str:
+def _legend_cuisines(restaurant_data: list[dict] | None) -> list[str]:
+    """Cuisines to show in the map legend, in CUISINE_COLORS order.
+
+    Only cuisines that actually appear on the map are listed, so the legend
+    always matches the user's cuisine selection. Falls back to every known
+    cuisine when no restaurant data is available.
+    """
+    colors = restaurants_svc.CUISINE_COLORS
+    present = {r.get("cuisine") for r in (restaurant_data or [])}
+    chosen = [c for c in colors if c in present]
+    return chosen or list(colors)
+
+
+def _build_map_markdown(
+    map_path: str,
+    engine: str,
+    width_percent: int,
+    cuisines: list[str] | None = None,
+) -> str:
     """Build renderer-specific restaurant map markup with a cuisine legend."""
     map_file = Path(map_path).name
+    colors = restaurants_svc.CUISINE_COLORS
+    cuisines = cuisines or list(colors)
+    per_row = 3
+    rows = [cuisines[i:i + per_row] for i in range(0, len(cuisines), per_row)]
     if engine == "typst":
+        legend_rows = [
+            "   ".join(
+                f'#text(fill: rgb("{colors[c]}"))[●] {c}' for c in row
+            )
+            for row in rows
+        ]
         return (
             "\n\n```{=typst}\n"
             "#align(center)[\n"
             f"  #image(\"{map_file}\", width: {width_percent}%)\n"
             "  #v(6pt)\n"
             "  #text(size: 8pt)["
-            "#text(fill: rgb(46, 125, 50))[●] Local   "
-            "#text(fill: rgb(198, 40, 40))[●] Italian   "
-            "#text(fill: rgb(21, 101, 192))[●] Croatian\\\n"
-            "#text(fill: rgb(230, 81, 0))[●] Grill   "
-            "#text(fill: rgb(106, 27, 154))[●] Steakhouse   "
-            "#text(fill: rgb(0, 131, 143))[●] Seafood"
-            "]\n]\n```\n"
+            + "\\\n".join(legend_rows)
+            + "]\n]\n```\n"
         )
+    tabular_rows = []
+    for row in rows:
+        cells = [
+            f"\\textcolor[HTML]{{{colors[c].lstrip('#')}}}"
+            f"{{\\large\\textbullet}} {c}"
+            for c in row
+        ]
+        cells += [""] * (per_row - len(cells))
+        tabular_rows.append(" &\n".join(cells))
     legend = (
         "\\begin{center}\n"
         "\\begin{tabular}{ll@{\\hspace{12pt}}ll@{\\hspace{12pt}}ll}\n"
         "\\textbf{Cuisine} & & &  \\\\[2pt]\n"
         "\n"
-        "\\textcolor[HTML]{2E7D32}{\\large\\textbullet} Local &\n"
-        "\\textcolor[HTML]{C62828}{\\large\\textbullet} Italian &\n"
-        "\\textcolor[HTML]{1565C0}{\\large\\textbullet} Croatian  \\\\\n"
-        "\n"
-        "\\textcolor[HTML]{E65100}{\\large\\textbullet} Grill &\n"
-        "\\textcolor[HTML]{6A1B9A}{\\large\\textbullet} Steakhouse  &\n"
-        "\\textcolor[HTML]{00838F}{\\large\\textbullet} Seafood\\\\\n"
+        + " \\\\\n\n".join(tabular_rows)
+        + "\\\\\n"
         "\\end{tabular}\n"
         "\\end{center}\n"
     )
@@ -567,9 +666,6 @@ def _build_map_markdown(map_path: str, engine: str, width_percent: int) -> str:
 
 def _prepare_markdown_for_engine(markdown_text: str, engine: str, layout: dict) -> str:
     """Build private renderer markup from clean user-facing brochure Markdown."""
-    # Existing browser sessions and Undo history may contain an earlier layout
-    # schema. Normalize here so new optional controls remain backward-compatible.
-    layout = layout_chat.normalize_layout_settings(layout)
     source = _strip_layout_markers(markdown_text)
     # Page-break directives are visible in CodeMirror but hidden by Markdown
     # previews. Accept legacy \newpage lines from earlier brochures too.

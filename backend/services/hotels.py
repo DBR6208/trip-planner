@@ -155,6 +155,7 @@ def find_hotels(city_name: str) -> list[dict]:
     seen_ids = set()
 
     # ── Step 1: nearby search (comprehensive, catches every lodging) ──
+    page_token = None
     for page in range(3):
         try:
             params: dict = {
@@ -162,8 +163,8 @@ def find_hotels(city_name: str) -> list[dict]:
                 "radius": config.HOTEL_SEARCH_RADIUS,
                 "type": "lodging",
             }
-            if page > 0:
-                params["page_token"] = page_token  # type: ignore[name-defined]
+            if page_token:
+                params["page_token"] = page_token
             result = geo.gmaps().places_nearby(**params)
 
             for place in result.get("results", []):
@@ -263,7 +264,7 @@ def format_hotel(hotel: dict, description: str, parkings: list[dict] | None = No
     if parkings:
         lines.append("\n**Nearby indoor parking garages:**  \n")
         for p in parkings:
-            pmaps = geo.generate_maps_url(p.get("place_id", ""), "parking")
+            pmaps = geo.generate_maps_url(p.get("place_id", ""))
             name = p.get("name", "")
             addr = p.get("address", "")
             if pmaps:

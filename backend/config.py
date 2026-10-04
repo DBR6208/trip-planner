@@ -18,10 +18,6 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 # Fallback model when primary is overloaded or returns empty
 FALLBACK_MODEL = "openai/gpt-4o-mini"
 
-# Low-cost model used only for constrained brochure layout commands. It is
-# intentionally separate from the itinerary/content model.
-OPENROUTER_LAYOUT_MODEL = os.getenv("OPENROUTER_LAYOUT_MODEL", "openai/gpt-6-luna")
-
 # Departure address
 HOME_ADDRESS = "Heirweg 85A, 9190 Stekene, Belgium"
 
@@ -29,8 +25,6 @@ HOME_ADDRESS = "Heirweg 85A, 9190 Stekene, Belgium"
 CHARGE_UP_TO_PERCENT = 90.0
 AVERAGE_SPEED_KMPH = 80.0
 CHARGING_TIME_MINUTES = 45.0
-SEARCH_RADIUS_METERS = 2000
-MAX_RESULTS_TO_PROCESS = 5
 BATTERY_CAPACITY_KWH = 78.0
 CONSUMPTION_KWH_PER_100KM = 17.31
 
@@ -38,16 +32,9 @@ CONSUMPTION_KWH_PER_100KM = 17.31
 HOTEL_SEARCH_RADIUS = 1500  # meters from city center
 HOTEL_DISTANCE_LIMIT = 3000  # max meters from city center
 
-# Restaurant search
-RESTAURANT_SEARCH_RADIUS = 3000  # meters from hotel
-WALK_DISTANCE_MAX_METERS = 2500  # ~30 min walk
+# Restaurant search (the selectable cuisines live in CUISINE_COLORS, restaurants.py)
+WALK_DISTANCE_MAX_METERS = 2500  # max straight-line distance from hotel (~30 min walk); taxi is fine
 REVIEW_MINIMUM = 50  # minimum review count
-REVIEW_MINIMUM_HIGH_RATING = 100  # for ratings >= 4.5
-
-# Allowed cuisines (only these appear in brochures)
-ALLOWED_CUISINES = [
-    "Local", "Italian", "Croatian", "Grill", "Steakhouse", "Seafood"
-]
 
 # Cuisine filter keywords (any restaurant mentioning these is excluded).
 # Keep this list focused on cuisine/style terms rather than subjective labels.
@@ -55,9 +42,27 @@ EXCLUDED_CUISINE_KEYWORDS = [
     "turkish", "türkisch", "turkisch", "kebab", "kebap", "doner", "döner",
     "anatolian", "ottoman", "syrian", "asian", "fusion", "halal", "chinese", "thai",
     "lebanese", "indian", "japanese", "korean", "vietnamese",
+    "greek", "griechisch", "griechische", "griechisches", "grec", "grecque",
+    "grieks", "griekse", "gyros", "souvlaki",
+    "turc", "turque", "turks", "turkse", "shoarma", "shawarma",
+    "chinois", "chinees", "chinese", "japonais", "japans", "indien", "indiaas",
     "mexican", "african", "middle eastern", "indonesian",
-    "filipino", "pakistani", "bangladeshi", "persian",
-    "mediterranean"
+    "filipino", "pakistani", "bangladeshi", "persian"
+]
+
+# Restaurant chains and franchises to leave out (matched on accent-free,
+# lower-case words in the place name). Chains are also detected automatically
+# when the same brand shows up more than once in the search results.
+KNOWN_CHAINS = [
+    "l'osteria", "vapiano", "block house", "maredo", "hans im glück",
+    "peter pane", "alex", "nordsee", "ihop", "subway", "mcdonald's", "burger king",
+    "kfc", "domino's", "pizza hut", "a&o", "dean & david", "jim block",
+    "la vita e bella", "ristorante amalfi", "marché", "mövenpick", "hard rock",
+    "brasserie flo", "léon", "buffalo grill", "hippopotamus", "courtepaille",
+    "bistro romain", "del arte", "la boucherie", "pizza paï", "pizza pai",
+    "exki", "le pain quotidien", "panos", "wagamama", "nando's",
+    "pizza express", "zizzi", "prezzo", "bella italia", "ask italian",
+    "loetje", "la place", "wok to walk",
 ]
 
 # Charging station brands
@@ -71,7 +76,6 @@ CHARGING_STATIONS_FILE = os.path.join(
 )
 
 # PDF output
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "brochures")
 WEEKEND_GUIDES_DIR = os.path.join(os.path.dirname(__file__), "..", "guides")
 TEMP_GUIDES_DIR = os.path.join(WEEKEND_GUIDES_DIR, "temp")
 

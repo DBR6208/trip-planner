@@ -1,7 +1,6 @@
-"""Weekend itinerary generation with actual user pattern."""
+﻿"""Weekend itinerary generation with actual user pattern."""
 
 from . import llm
-from .. import config
 
 
 def generate_itinerary(
@@ -29,13 +28,20 @@ The user is staying at **{hotel_name}** at {hotel_address}.
 Below is the city guide research (attractions, shopping streets, markets, culture — use this for detailed activity suggestions):
 {search_context}
 
-Below is the list of available restaurants with walk distances, ratings, and cuisine types. You MUST pick 2-3 specific restaurants for each of Friday evening and Saturday evening from this list. Use their actual names, walk distances, ratings, and cuisine:
+Below is the list of available restaurants with walk distances, ratings, and cuisine types. You MUST pick exactly 3 specific restaurants for Friday evening and exactly 3 different restaurants for Saturday evening from this list. Use their actual names, walk distances, ratings, and cuisine:
 RESTAURANT LIST:
 {restaurant_list}
 
+RESTAURANT SELECTION CRITERIA (every pick must satisfy all of them):
+- Only restaurants that appear in the RESTAURANT LIST. Never invent or alter a restaurant, walk time or rating.
+- Warm, generous, Burgundian evening dining: quality meat, fish, grill or pasta, hearty portions, good wine or beer selection.
+- No fast food, no pure pizzerias, no cafes, and no Turkish, Greek, Asian, fusion or other excluded cuisines.
+- Prefer the best rated and shortest walk from the hotel; the 3 picks per evening are ranked, best first.
+- Vary the cuisines within an evening where the list allows it, and give Friday and Saturday completely different restaurants.
+
 IMPORTANT GUIDELINES:
 - Use time-of-day blocks (morning, afternoon, evening), not clock times. Example: "late afternoon" / "mid-evening" / "early afternoon" — not "5:00 PM" or "6:30 PM".
-- For each evening, recommend 2-3 specific restaurants from the list above. Format them as a proper markdown bullet list (each entry on its own line starting with `-`). Do NOT list them inline in a running sentence.
+- For each evening (Friday and Saturday), recommend exactly the top 3 restaurants from the list above, satisfying the selection criteria. Format them as a proper markdown bullet list (each entry on its own line starting with `-`). Do NOT list them inline in a running sentence.
 - If the walk to any restaurant or attraction exceeds 20 minutes, or if the weather is bad, suggest taking a taxi.
 - The tone should be relaxed, practical, and richly descriptive — describe the atmosphere and character of the places visited.
 - Bold only: restaurant names, hotel name, attraction names, and key numbers. No italic, no emoji, no filler phrases.
@@ -52,9 +58,9 @@ IMPORTANT GUIDELINES:
 Describe the arrival experience at the hotel around 5-6 PM in a relaxed tone. Refresh, then:
 - Start with a pre-dinner drink at the hotel bar to unwind and discuss the evening options. Describe the atmosphere.
 - Take a short relaxed walk (up to ~20 minutes) to get a first impression of the city at night — a key landmark, lively square, or charming street. Name the specific landmark or neighborhood. Mention the walking route.
-- For dinner, list 2-3 specific restaurants from the RESTAURANT LIST above. Format them as a proper markdown bullet list with each entry on its own line. For each, write: **name** (cuisine type) — short description, walk time from hotel, rating. Recommend one as the top choice and explain why. Example:
+- For dinner, list the top 3 recommended restaurants from the RESTAURANT LIST above, ranked best first. Format them as a proper markdown bullet list with each entry on its own line. For each, write: **name** (cuisine type) — short description, walk time from hotel, rating, and the restaurant website as a markdown link copied exactly from the RESTAURANT LIST (omit only if no website is listed). Recommend one as the top choice and explain why. Example:
 
-  - **Restaurant Name** (cuisine) — short description of food and ambiance, X min walk, rated 4.X
+  - **Restaurant Name** (cuisine) — short description of food and ambiance, X min walk, rated 4.X, [Website](https://...)
 
 - After dinner, return to the hotel for a nightcap and a game of UNO or cards before sleeping.
 - If any walk exceeds 20 minutes or the weather is bad, suggest taking a taxi.
@@ -73,9 +79,9 @@ Make this section rich and detailed with specific suggestions drawn from the cit
 In the evening (after returning to the hotel):
 - Start with a pre-dinner drink at the hotel bar.
 - Take a short relaxed walk — suggest a different route or neighborhood than the daytime walk.
-- For dinner, list 2-3 specific restaurants from the RESTAURANT LIST (different from Friday's choices). Format them as a proper markdown bullet list with each entry on its own line. For each, write: **name** (cuisine type) — short description, walk time from hotel, rating. Recommend one as the top choice. Example:
+- For dinner, list the top 3 recommended restaurants from the RESTAURANT LIST (all different from Friday's choices), ranked best first. Format them as a proper markdown bullet list with each entry on its own line. For each, write: **name** (cuisine type) — short description, walk time from hotel, rating, and the restaurant website as a markdown link copied exactly from the RESTAURANT LIST (omit only if no website is listed). Recommend one as the top choice. Example:
 
-  - **Restaurant Name** (cuisine) — short description of food and ambiance, X min walk, rated 4.X
+  - **Restaurant Name** (cuisine) — short description of food and ambiance, X min walk, rated 4.X, [Website](https://...)
 
 - After dinner, return to the hotel for a nightcap and UNO or cards.
 - If any walk exceeds 20 minutes or weather is bad, suggest a taxi.
@@ -100,5 +106,5 @@ The two evening walks must be to different parts of the city.
             "Write in flowing, relaxed paragraphs and descriptive bullets — not sparse notes. "
             "Output only the itinerary. No introductions, no conclusions, no emoji, no italic."
         ),
-        max_tokens=4000,
+        max_tokens=8000,
     )

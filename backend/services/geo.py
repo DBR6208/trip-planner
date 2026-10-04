@@ -122,7 +122,7 @@ def get_walking_distances(origin, destinations: list[dict]) -> list[dict]:
         return destinations
 
 
-def generate_maps_url(place_id: str, place_type: str = "hotel") -> str | None:
+def generate_maps_url(place_id: str) -> str | None:
     """Google Maps URL for a place_id. Uses direct place URL to avoid redirect warnings."""
     if place_id:
         return f"https://www.google.com/maps?q=place_id:{place_id}"

@@ -3,7 +3,6 @@
 import folium
 
 from . import geo
-from .. import config
 
 
 def _generate_google_maps_url(place_id: str) -> str | None:
@@ -97,7 +96,7 @@ def format_tourist_office(office: dict) -> str:
     if not office:
         return "Tourist office information not available."
 
-    maps_url = geo.generate_maps_url(office.get("place_id", ""), "tourist_office")
+    maps_url = geo.generate_maps_url(office.get("place_id", ""))
     lines = [f"- *Address:* {office.get('address', '')}"]
     if office.get("website"):
         lines.append(f"- *Website:* [{office['name']}]({office['website']})")

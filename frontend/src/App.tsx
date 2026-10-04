@@ -24,8 +24,6 @@ import {
   Download,
   Calendar,
   Image,
-  MessageSquare,
-  Undo2,
 } from "lucide-react";
 import "./index.css";
 
@@ -68,15 +66,6 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
-
-const DEFAULT_LAYOUT_SETTINGS: import("./types/api").BrochureLayoutSettings = {
-  hotel_image_alignment: "center",
-  hotel_image_width_percent: 45,
-  restaurant_map_width_percent: 100,
-  keep_restaurant_cards_together: true,
-  restaurant_heading_gap_pt: 14,
-  restaurant_card_gap_pt: 12,
-};
 
 function tabReady(id: TabId, state: FullState): boolean {
   if (id === 0) return true;
@@ -123,7 +112,9 @@ interface FullState {
   pdfUrl: string;
   pdfFilename: string;
   pdfLoading: boolean;
-  markdownText: string;
+  sourceDir: string;
+  sourceFile: string;
+  rebuildLoading: boolean;
   showEditor: boolean;
   brochureMarkdown: string;
   coverImages: import("./types/api").CoverImageInfo[];
@@ -131,23 +122,21 @@ interface FullState {
   selectedCoverImage: import("./types/api").CoverImageInfo | null;
   coverImageCustomUrl: string;
   coverImageUploading: boolean;
-  layoutSettings: import("./types/api").BrochureLayoutSettings;
-  layoutHistory: import("./types/api").BrochureLayoutSettings[];
-  layoutChatMessage: string;
-  layoutChatSummary: string;
-  layoutChatLoading: boolean;
   error: string;
-  showGuide: boolean;
 }
 
 // ── Cuisine colors (matching backend) ──
+// Keep in sync with CUISINE_COLORS in backend/services/restaurants.py.
+// The cuisine selection menu is rendered from this object's keys.
 const CUI_COLORS: Record<string, string> = {
-  Local: "#2E7D32",
   Italian: "#C62828",
+  German: "#F57F17",
+  Mediterranean: "#7CB342",
+  Seafood: "#00ACC1",
   Croatian: "#1565C0",
-  Grill: "#E65100",
+  French: "#5C6BC0",
   Steakhouse: "#6A1B9A",
-  Seafood: "#00838F",
+  Belgian: "#795548",
 };
 
 // ── Start address presets ──
@@ -197,7 +186,9 @@ export default function App() {
     pdfUrl: "",
     pdfFilename: "",
     pdfLoading: false,
-    markdownText: "",
+    sourceDir: "",
+    sourceFile: "",
+    rebuildLoading: false,
     showEditor: false,
     brochureMarkdown: "",
     coverImages: [],
@@ -205,13 +196,7 @@ export default function App() {
     selectedCoverImage: null,
     coverImageCustomUrl: "",
     coverImageUploading: false,
-    layoutSettings: DEFAULT_LAYOUT_SETTINGS,
-    layoutHistory: [],
-    layoutChatMessage: "",
-    layoutChatSummary: "",
-    layoutChatLoading: false,
     error: "",
-    showGuide: false,
   });
   const [sidebarOpen] = useState(true);
 
@@ -238,7 +223,6 @@ export default function App() {
     try {
       const data = await api.cityGuide(s.city.trim(), s.country.trim() || "Germany");
       update("guideData", data);
-      update("showGuide", true);
     } catch (e) { showError(e); }
     finally { update("guideLoading", false); }
   };
@@ -293,6 +277,10 @@ export default function App() {
 
   const handleSearchRestaurants = async () => {
     if (!s.selectedHotel) return;
+    if (s.selectedCuisines.length === 0) {
+      update("error", "Please select at least one cuisine.");
+      return;
+    }
     update("restaurantLoading", true);
     update("restaurantFormatted", "");
     update("restaurantMapHtml", "");
@@ -445,48 +433,32 @@ export default function App() {
         restaurant_map_html: s.restaurantMapHtml || undefined,
         hotel_photo_url: s.selectedHotel?.photo_url || undefined,
         markdown_text: stripInternalLayoutMarkers(s.brochureMarkdown) || undefined,
-        layout_settings: s.layoutSettings,
       });
       update("pdfUrl", data.preview_url);
       // Extract filename from preview_url: /api/pdf/preview/{filename}
       const filename = data.preview_url.split("/").pop() || "";
       update("pdfFilename", filename);
+      update("sourceDir", data.source_dir);
+      update("sourceFile", data.source_file);
       const cleanMarkdown = stripInternalLayoutMarkers(data.markdown);
       update("brochureMarkdown", cleanMarkdown);
-      update("markdownText", cleanMarkdown);
     } catch (e) { showError(e); }
     finally { update("pdfLoading", false); }
   };
 
-  const handleLayoutChat = async () => {
-    const message = s.layoutChatMessage.trim();
-    if (!message) return;
-    update("layoutChatLoading", true);
+  /** Recompile the hand-edited brochure.typ / brochure.tex (no Markdown involved). */
+  const handleRebuildFromSource = async () => {
+    if (!s.city) return;
+    update("rebuildLoading", true);
     update("error", "");
     try {
-      const result = await api.layoutChat(message, s.layoutSettings);
-      set((prev) => ({
-        ...prev,
-        layoutHistory: [...prev.layoutHistory, prev.layoutSettings],
-        layoutSettings: result.settings,
-        layoutChatMessage: "",
-        layoutChatSummary: result.summary,
-      }));
+      const data = await api.rebuildPDF(s.city);
+      update("pdfUrl", data.preview_url);
+      update("pdfFilename", data.preview_url.split("/").pop() || "");
+      update("sourceDir", data.source_dir);
+      update("sourceFile", data.source_file);
     } catch (e) { showError(e); }
-    finally { update("layoutChatLoading", false); }
-  };
-
-  const handleUndoLayout = () => {
-    set((prev) => {
-      const previous = prev.layoutHistory[prev.layoutHistory.length - 1];
-      if (!previous) return prev;
-      return {
-        ...prev,
-        layoutSettings: previous,
-        layoutHistory: prev.layoutHistory.slice(0, -1),
-        layoutChatSummary: "Previous layout settings restored. Regenerate the PDF to preview them.",
-      };
-    });
+    finally { update("rebuildLoading", false); }
   };
 
   /** Finalize the PDF: copy from temp to guides/{City}.pdf, clear temp, then download. */
@@ -850,9 +822,9 @@ export default function App() {
               <p className="text-xs text-gray-400">Select a hotel first.</p>
             ) : (
               <>
-                <p className="text-xs text-gray-500 mb-2">Select cuisines to search for. Leave empty to search all.</p>
+                <p className="text-xs text-gray-500 mb-2">Only the ticked cuisines are searched.</p>
                 <div className="space-y-1.5 mb-3">
-                  {["Local", "Italian", "Croatian", "Grill", "Steakhouse", "Seafood"].map((c) => (
+                  {Object.keys(CUI_COLORS).map((c) => (
                     <label
                       key={c}
                       className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg border cursor-pointer text-sm ${
@@ -872,9 +844,14 @@ export default function App() {
                     </label>
                   ))}
                 </div>
+                {s.selectedCuisines.length === 0 && (
+                  <p className="text-xs text-amber-600 mb-2 font-medium">
+                    Please select at least one cuisine.
+                  </p>
+                )}
                 <button
                   onClick={handleSearchRestaurants}
-                  disabled={s.restaurantLoading}
+                  disabled={s.restaurantLoading || s.selectedCuisines.length === 0}
                   className="btn btn-primary btn-sm w-full"
                 >
                   {s.restaurantLoading ? (
@@ -1478,49 +1455,44 @@ export default function App() {
                       value={stripInternalLayoutMarkers(s.brochureMarkdown)}
                       onChange={(value) => update("brochureMarkdown", stripInternalLayoutMarkers(value))}
                     />
-                    <div className="mt-3 rounded-lg border border-base-300 bg-base-100 p-3 flex-shrink-0">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-blue">
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          Layout assistant
+                    <p className="mt-3 text-[11px] text-gray-500 flex-shrink-0">
+                      Edit page breaks directly in the Markdown above: add, move, or delete a <code>&lt;!-- pagebreak --&gt;</code> line. It remains hidden in previews.
+                    </p>
+                    {s.sourceFile && (
+                      <div className="mt-3 rounded-lg border border-base-300 bg-base-100 p-3 flex-shrink-0">
+                        <div className="text-xs font-semibold text-brand-blue mb-1">
+                          Edit the source yourself
                         </div>
-                        <button
-                          onClick={handleUndoLayout}
-                          disabled={s.layoutHistory.length === 0 || s.layoutChatLoading}
-                          className="btn btn-ghost btn-xs gap-1"
-                        >
-                          <Undo2 className="w-3.5 h-3.5" />
-                          Undo
-                        </button>
+                        <p className="text-[11px] text-gray-500 mb-2">
+                          Open <code>{s.sourceFile}</code> in your editor
+                          (folder: <code className="break-all">{s.sourceDir}</code>),
+                          change it, save, then rebuild. Regenerating the PDF above
+                          overwrites these files.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={`${apiBase}/api/pdf/source?city=${encodeURIComponent(s.city)}`}
+                            className="btn btn-ghost btn-xs"
+                          >
+                            Download source (.zip)
+                          </a>
+                          <button
+                            onClick={handleRebuildFromSource}
+                            disabled={s.rebuildLoading || s.pdfLoading}
+                            className="btn btn-outline btn-xs gap-1"
+                          >
+                            {s.rebuildLoading ? (
+                              <span className="flex items-center gap-1.5">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Rebuilding…
+                              </span>
+                            ) : (
+                              `Rebuild PDF from ${s.sourceFile}`
+                            )}
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-gray-500 mb-2">
-                        Edit page breaks directly in the Markdown above: add, move, or delete a <code>&lt;!-- pagebreak --&gt;</code> line. It remains hidden in previews. Use chat for spacing, card splitting, and image size or alignment.
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          value={s.layoutChatMessage}
-                          onChange={(e) => update("layoutChatMessage", e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleLayoutChat();
-                            }
-                          }}
-                          placeholder="Describe a layout adjustment…"
-                          className="input input-bordered input-sm flex-1"
-                        />
-                        <button
-                          onClick={handleLayoutChat}
-                          disabled={!s.layoutChatMessage.trim() || s.layoutChatLoading}
-                          className="btn btn-outline btn-sm"
-                        >
-                          {s.layoutChatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
-                        </button>
-                      </div>
-                      {s.layoutChatSummary && (
-                        <p className="text-[11px] text-green-700 mt-2">{s.layoutChatSummary}</p>
-                      )}
-                    </div>
+                    )}
                     <div className="flex items-center justify-end gap-2 mt-3 flex-shrink-0">
                       <button
                         onClick={handleGeneratePDF}

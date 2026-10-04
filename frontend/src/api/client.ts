@@ -72,11 +72,9 @@ export const api = {
   generatePDF: (req: import("../types/api").PDFReq) =>
     request<import("../types/api").PDFRes>("/api/pdf", req),
 
-  layoutChat: (message: string, current_settings: import("../types/api").BrochureLayoutSettings) =>
-    request<import("../types/api").LayoutChatRes>("/api/brochure/layout-chat", {
-      message,
-      current_settings,
-    }),
+  /** Recompile the hand-edited brochure.typ / brochure.tex into a new PDF. */
+  rebuildPDF: (city: string) =>
+    request<import("../types/api").RebuildRes>("/api/pdf/rebuild", { city }),
 
   coverImages: (city: string, tourist_office_website?: string) =>
     request<import("../types/api").CoverImagesRes>("/api/cover-images", {
@@ -105,10 +103,6 @@ export const api = {
       url,
       title: title || "Web Image",
     }),
-
-  /** Assemble brochure markdown from trip data (no PDF compilation). */
-  brochureMarkdown: (req: import("../types/api").BrochureMarkdownReq) =>
-    request<{ markdown: string }>("/api/brochure/markdown", req),
 
   /** Finalize PDF: copy from temp to guides/{City}.pdf and clear temp. */
   finalizePDF: (filename: string, city: string) =>

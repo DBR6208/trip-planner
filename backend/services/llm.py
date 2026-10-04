@@ -57,6 +57,11 @@ def generate(
                 max_completion_tokens=max_tokens,
             )
             content = (response.choices[0].message.content or "").strip()
+            if response.choices[0].finish_reason == "length":
+                print(
+                    f"[llm] WARNING: output from '{m}' was truncated at "
+                    f"max_tokens={max_tokens}; consider raising the limit."
+                )
             if content:
                 if attempt > 0:
                     print(

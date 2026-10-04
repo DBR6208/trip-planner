@@ -1,6 +1,5 @@
 """EV route planning with charging station selection."""
 
-import os
 from datetime import datetime, timedelta
 
 import folium

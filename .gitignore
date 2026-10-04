@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -17,8 +17,7 @@ env/
 # Environment variables (API keys, secrets)
 .env
 
-# Generated brochures (build artifacts)
-brochures/
+# Generated PDFs and editable brochure sources (build artifacts)
 guides/
 
 # Jupyter notebook outputs
@@ -37,3 +36,5 @@ Thumbs.db
 
 # Logs
 *.log
+# Cleanup review folder (removed files kept for checking)
+work/
